@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
@@ -39,6 +40,7 @@ class MainActivity : ComponentActivity() {
             
             val glyphMap = remember { mutableStateMapOf<Char, Bitmap>() }
             val context = LocalContext.current
+            val scope = rememberCoroutineScope() // FIXED: Use scope for background tasks
 
             val sheetLauncher = rememberLauncherForActivityResult(
                 contract = ActivityResultContracts.GetContent()
@@ -48,8 +50,8 @@ class MainActivity : ComponentActivity() {
                     val fullSheet = BitmapFactory.decodeStream(inputStream)
                     if (fullSheet != null) {
                         isProcessing = true
-                        // Run processing in background so the UI doesn't freeze
-                        LaunchedEffect(fullSheet) {
+                        // FIXED: Launching the pixel-scan correctly
+                        scope.launch {
                             processWithPixelScan(fullSheet, glyphMap) { currentProg ->
                                 progress = currentProg
                             }
@@ -68,16 +70,15 @@ class MainActivity : ComponentActivity() {
                     Box(modifier = Modifier.padding(padding).fillMaxSize()) {
                         PaperView(text = noteText, glyphMap = glyphMap)
 
-                        // PROGRESS OVERLAY
                         if (isProcessing) {
-                            Column(
-                                modifier = Modifier.fillMaxSize().background(Color.Black.copy(0.5f)),
-                                verticalArrangement = Arrangement.Center,
-                                horizontalAlignment = Alignment.CenterHorizontally
+                            Box(
+                                modifier = Modifier.fillMaxSize().background(Color.Black.copy(0.4f)),
+                                contentAlignment = Alignment.Center
                             ) {
-                                CircularProgressIndicator(progress = progress, color = Color.White)
-                                Spacer(modifier = Modifier.height(10.dp))
-                                Text("Processing Handwriting... ${(progress * 100).toInt()}%", color = Color.White)
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    CircularProgressIndicator(progress = progress, color = Color.White)
+                                    Text("Scanning handwriting: ${(progress * 100).toInt()}%", color = Color.White)
+                                }
                             }
                         }
 
@@ -85,7 +86,6 @@ class MainActivity : ComponentActivity() {
                             HandwritingInputDialog(noteText, { showTextDialog = false }, { noteText = it; showTextDialog = false })
                         }
                         
-                        // Small Upload Button
                         Button(
                             onClick = { sheetLauncher.launch("image/*") },
                             modifier = Modifier.align(Alignment.BottomStart).padding(16.dp)
@@ -97,9 +97,6 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-/**
- * Recognizes letters by scanning for "Ink Pixels" (Pistol logic)
- */
 suspend fun processWithPixelScan(
     sheet: Bitmap, 
     glyphMap: MutableMap<Char, Bitmap>, 
@@ -114,26 +111,23 @@ suspend fun processWithPixelScan(
     for (i in 0 until alphabet.length) {
         val r = i / cols
         val c = i % cols
+        val cell = Bitmap.createBitmap(sheet, c * cellW, r * cellH, cellW, cellH)
         
-        val x = c * cellW
-        val y = r * cellH
-        
-        // Target the specific cell area
-        val cell = Bitmap.createBitmap(sheet, x, y, cellW, cellH)
-        
-        // Find the "Pistol" (The actual ink clusters)
+        // Scan for ink clusters to separate "A" from "a"
         val clusters = findInkClusters(cell)
         
         if (clusters.size >= 2) {
             glyphMap[alphabet[i].uppercaseChar()] = extractAndClean(cell, clusters[0])
             glyphMap[alphabet[i].lowercaseChar()] = extractAndClean(cell, clusters[1])
         } else if (clusters.isNotEmpty()) {
-            val single = extractAndClean(cell, clusters[0])
-            glyphMap[alphabet[i].lowercaseChar()] = single
-            glyphMap[alphabet[i].uppercaseChar()] = single
+            val bmp = extractAndClean(cell, clusters[0])
+            glyphMap[alphabet[i].lowercaseChar()] = bmp
+            glyphMap[alphabet[i].uppercaseChar()] = bmp
         }
         
-        onProgress((i + 1).toFloat() / alphabet.length)
+        withContext(Dispatchers.Main) {
+            onProgress((i + 1).toFloat() / alphabet.length)
+        }
     }
 }
 
@@ -142,19 +136,20 @@ fun findInkClusters(cell: Bitmap): List<Rect> {
     var inInk = false
     var startX = 0
     
-    // Scan pixels for the red/dark pen color
     for (x in 0 until cell.width) {
-        var hasInk = false
+        var columnHasInk = false
         for (y in 0 until cell.height) {
             val p = cell.getPixel(x, y)
-            // Pixel target: Red ink is usually low in Green/Blue
-            if (AndroidColor.red(p) < 180 && (AndroidColor.green(p) < 150 || AndroidColor.blue(p) < 150)) {
-                hasInk = true; break
+            // Pixel target for red/dark ink
+            if (AndroidColor.red(p) < 175 && AndroidColor.green(p) < 160) {
+                columnHasInk = true; break
             }
         }
-        if (hasInk && !inInk) { startX = x; inInk = true }
-        else if (!hasInk && inInk) {
-            clusters.add(Rect(startX, 0, x, cell.height))
+        if (columnHasInk && !inInk) { startX = x; inInk = true }
+        else if (!columnHasInk && inInk) {
+            if (x - startX > 5) { // Ignore tiny noise
+                clusters.add(Rect(startX, 0, x, cell.height))
+            }
             inInk = false
         }
     }
@@ -165,11 +160,11 @@ fun extractAndClean(source: Bitmap, rect: Rect): Bitmap {
     val cropped = Bitmap.createBitmap(source, rect.left, 0, rect.width(), source.height)
     val result = cropped.copy(Bitmap.Config.ARGB_8888, true)
     
-    // Final Pixel Polish: Remove everything that isn't the pen ink
     for (y in 0 until result.height) {
         for (x in 0 until result.width) {
             val p = result.getPixel(x, y)
-            if (AndroidColor.red(p) > 170 && AndroidColor.green(p) > 170) {
+            // Remove gray paper/shadows
+            if (AndroidColor.red(p) > 165 && AndroidColor.green(p) > 165) {
                 result.setPixel(x, y, AndroidColor.TRANSPARENT)
             }
         }
@@ -181,12 +176,17 @@ fun extractAndClean(source: Bitmap, rect: Rect): Bitmap {
 fun PaperView(text: String, glyphMap: Map<Char, Bitmap>) {
     val paint = android.graphics.Paint().apply {
         color = AndroidColor.LTGRAY
-        textSize = 40f
+        textSize = 38f
+        typeface = android.graphics.Typeface.SERIF
     }
-    Canvas(modifier = Modifier.fillMaxSize().background(Color(0xFFFDFBFA))) {
-        // Draw blue lines
+    // Subtle wrinkle texture simulation
+    val paperColor = Color(0xFFFDFBFA)
+
+    Canvas(modifier = Modifier.fillMaxSize().background(paperColor)) {
+        // Draw lines
         for (i in 0..size.height.toInt() step 65) {
-            drawLine(Color(0xFFADCEEB).copy(0.4f), Offset(0f, 220f + i), Offset(size.width, 220f + i), 1.5f)
+            val yPos = 220f + i
+            drawLine(Color(0xFFADCEEB).copy(0.4f), Offset(0f, yPos), Offset(size.width, yPos), 1.5f)
         }
         
         var curX = 135f
@@ -194,14 +194,17 @@ fun PaperView(text: String, glyphMap: Map<Char, Bitmap>) {
         text.forEach { char ->
             val bmp = glyphMap[char]
             if (bmp != null) {
-                val w = bmp.width * (45f / bmp.height)
+                val scale = 45f / bmp.height
+                val w = bmp.width * scale
                 if (curX + w > size.width - 50f) { curX = 135f; curY += 65f }
-                drawImage(bmp.asImageBitmap(), IntOffset(curX.toInt(), curY.toInt()), IntSize(w.toInt(), 45), blendMode = BlendMode.Multiply)
-                curX += w + 5f
+                drawImage(bmp.asImageBitmap(), IntOffset(curX.toInt(), curY.toInt()), 
+                    IntSize(w.toInt(), 45), blendMode = BlendMode.Multiply)
+                curX += w + 6f
             } else {
-                if (char == ' ') curX += 30f 
+                if (char == ' ') curX += 35f 
                 else if (char == '\n') { curX = 135f; curY += 65f }
                 else {
+                    // System font fallback
                     drawContext.canvas.nativeCanvas.drawText(char.toString(), curX, curY + 40f, paint)
                     curX += paint.measureText(char.toString()) + 5f
                 }
@@ -215,5 +218,5 @@ fun HandwritingInputDialog(initial: String, onDismiss: () -> Unit, onConfirm: (S
     var text by remember { mutableStateOf(initial) }
     AlertDialog(onDismissRequest = onDismiss, 
         confirmButton = { Button(onClick = { onConfirm(text) }) { Text("Write") } },
-        text = { TextField(text, { text = it }) })
+        text = { TextField(text, { text = it }, label = { Text("Type your note") }) })
 }
