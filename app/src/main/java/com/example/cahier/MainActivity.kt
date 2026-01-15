@@ -1,14 +1,12 @@
 package com.example.cahier
 
 import android.content.ContentValues
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
+import android.graphics.*
 import android.graphics.Canvas as AndroidCanvas
-import android.graphics.Paint
-import android.graphics.RectF
-import android.os.Bundle // CRITICAL MISSING IMPORT
+import android.os.Bundle
 import android.os.Environment
 import android.provider.MediaStore
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -20,18 +18,25 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.*
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.*
 import android.graphics.Color as AndroidColor
+import kotlin.random.Random
 
-// Data structures for Layout and Glyphs
+// --- Pro Parameters ---
+const val START_X = 110f
+const val START_Y = 280f
+const val LINE_SPACING = 140f
+const val FONT_SIZE = 95f
+const val PAGE_WIDTH = 1080
+const val PAGE_HEIGHT = 1920
+const val MAX_Y = PAGE_HEIGHT - 150f // Leave bottom margin
+
 data class Glyph(val bitmap: Bitmap, val baselineOffset: Float)
-data class LayoutResult(val x: Float, val y: Float)
+data class LayoutResult(val x: Float, val y: Float, val currentFontSize: Float)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -46,185 +51,192 @@ class MainActivity : ComponentActivity() {
             val pickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
                 uri?.let {
                     scope.launch {
-                        val stream = context.contentResolver.openInputStream(it)
-                        val sheet = BitmapFactory.decodeStream(stream)
-                        if (sheet != null) scanSheetToMap(sheet, glyphMap)
+                        try {
+                            val stream = context.contentResolver.openInputStream(it)
+                            val sheet = BitmapFactory.decodeStream(stream)
+                            if (sheet != null) scanSheetToMap(sheet, glyphMap)
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                        }
                     }
                 }
             }
 
-            LaunchedEffect(Unit) { 
-                while(true) { 
-                    delay(500)
-                    cursorVisible = !cursorVisible 
-                } 
-            }
+            LaunchedEffect(Unit) { while(true) { delay(500); cursorVisible = !cursorVisible } }
 
             Column(Modifier.fillMaxSize().padding(16.dp)) {
-                TextField(
-                    value = typedText, 
-                    onValueChange = { typedText = it }, 
-                    modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text("Type Myanmar text...") }
-                )
+                TextField(value = typedText, onValueChange = { typedText = it }, modifier = Modifier.fillMaxWidth())
                 Row(Modifier.padding(vertical = 8.dp)) {
-                    Button(onClick = { pickerLauncher.launch("image/*") }) { Text("Scan Sheet") }
+                    Button(onClick = { pickerLauncher.launch("image/*") }) { Text("Scan") }
                     Spacer(Modifier.width(8.dp))
                     Button(onClick = {
                         scope.launch {
-                            val exportBmp = renderToBitmap(typedText, glyphMap, 1080, 1920)
-                            saveToGallery(context, exportBmp)
+                            val pages = generatePages(typedText, glyphMap)
+                            pages.forEachIndexed { index, page ->
+                                saveToGallery(context, page, "Page_${index + 1}")
+                            }
+                            Toast.makeText(context, "Saved ${pages.size} pages!", Toast.LENGTH_SHORT).show()
                         }
-                    }) { Text("Save Gallery") }
+                    }) { Text("Export All Pages") }
                 }
-                Box(Modifier.weight(1f)) { 
-                    HandwritingPage(typedText, glyphMap, cursorVisible) 
-                }
+                Box(Modifier.weight(1f)) { HandwritingPage(typedText, glyphMap, cursorVisible) }
             }
         }
     }
 }
 
 /**
- * SCANNING ENGINE: Slices the image into a grid.
+ * FEATURE: MULTI-PAGE EXPORT
+ * Splits text into chunks that fit on individual bitmaps.
  */
-suspend fun scanSheetToMap(sheet: Bitmap, map: MutableMap<String, Glyph>) = withContext(Dispatchers.Default) {
-    val alphabet = listOf("က", "ခ", "ဂ", "င", "စ", "ဆ", "ဇ", "ဈ", "ည", "ဋ", "ဌ", "ဍ", "ဎ", "ဏ", "တ", "ထ", "ဒ", "ဓ", "န", "ပ") 
-    val cols = 5
-    val rows = 4 
-    val cellW = sheet.width / cols
-    val cellH = sheet.height / rows
-
-    alphabet.forEachIndexed { i, char ->
-        if (i < alphabet.size) {
-            val x = (i % cols) * cellW
-            val y = (i / cols) * cellH
-            // Avoid illegal crop if dimensions slightly off
-            val safeW = if (x + cellW <= sheet.width) cellW else sheet.width - x
-            val safeH = if (y + cellH <= sheet.height) cellH else sheet.height - y
-            
-            val cell = Bitmap.createBitmap(sheet, x, y, safeW, safeH)
-            val glyph = extractGlyph(cell)
-            if (glyph != null) map[char] = glyph
-        }
-    }
-}
-
-/**
- * INK EXTRACTION: Logic improved to prevent data corruption.
- */
-fun extractGlyph(source: Bitmap): Glyph? {
-    val w = source.width
-    val h = source.height
-    val pixels = IntArray(w * h)
-    source.getPixels(pixels, 0, w, 0, 0, w, h)
-    
-    val resultPixels = IntArray(w * h)
-    var lowestInkY = 0
-    var foundInk = false
-
-    for (y in 0 until h) {
-        for (x in 0 until w) {
-            val idx = y * w + x
-            val p = pixels[idx]
-            val luminance = (AndroidColor.red(p) + AndroidColor.green(p) + AndroidColor.blue(p)) / 3
-            
-            if (luminance < 160) { 
-                lowestInkY = maxOf(lowestInkY, y)
-                foundInk = true
-                resultPixels[idx] = AndroidColor.argb(255, 30, 60, 150)
-            } else {
-                resultPixels[idx] = AndroidColor.TRANSPARENT
-            }
-        }
-    }
-    
-    if (!foundInk) return null
-    val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-    out.setPixels(resultPixels, 0, w, 0, 0, w, h)
-    return Glyph(out, (h - lowestInkY).toFloat())
-}
-
-/**
- * DRAWING ENGINE: Unified logic for UI and Export.
- */
-fun drawAllHandwriting(
-    canvas: AndroidCanvas, 
-    text: String, 
-    glyphMap: Map<String, Glyph>, 
-    canvasWidth: Float
-): LayoutResult {
+suspend fun generatePages(text: String, glyphMap: Map<String, Glyph>): List<Bitmap> = withContext(Dispatchers.Default) {
+    val pages = mutableListOf<Bitmap>()
     val tokens = tokenizeMyanmar(text)
-    var xPos = 100f
-    var yPos = 250f
-    val lineSpacing = 120f
-    val fontSize = 90f
-    val paint = Paint().apply { isAntiAlias = true }
+    var remainingTokens = tokens
 
-    tokens.forEach { token ->
+    while (remainingTokens.isNotEmpty()) {
+        val bitmap = Bitmap.createBitmap(PAGE_WIDTH, PAGE_HEIGHT, Bitmap.Config.ARGB_8888)
+        val canvas = AndroidCanvas(bitmap)
+        canvas.drawColor(AndroidColor.rgb(255, 252, 242)) // Paper tint
+        
+        // Render and find out how many tokens were actually consumed
+        val (consumedCount, _) = renderTextChunk(canvas, remainingTokens, glyphMap, PAGE_WIDTH.toFloat(), isExport = true)
+        
+        pages.add(bitmap)
+        remainingTokens = remainingTokens.drop(consumedCount)
+        if (consumedCount == 0) break // Prevent infinite loop on single giant token
+    }
+    pages
+}
+
+/**
+ * FEATURE: LINE SQUEEZE & INK PRESSURE
+ * Returns (tokensConsumed, finalLayout)
+ */
+fun renderTextChunk(
+    canvas: AndroidCanvas,
+    tokens: List<String>,
+    glyphMap: Map<String, Glyph>,
+    canvasWidth: Float,
+    isExport: Boolean
+): Pair<Int, LayoutResult> {
+    var xPos = START_X
+    var yPos = START_Y
+    var tokensConsumed = 0
+    val paint = Paint().apply { isAntiAlias = true; isFilterBitmap = true }
+
+    for (token in tokens) {
         val glyph = glyphMap[token]
         if (glyph != null) {
-            val scale = fontSize / glyph.bitmap.height
-            val w = glyph.bitmap.width * scale
-            
-            if (xPos + w > canvasWidth - 60f) { xPos = 100f; yPos += lineSpacing }
+            // 1. RANDOM INK VARIATION (mimics pressure)
+            val pressure = Random.nextInt(-15, 15)
+            val colorFilter = PorterDuffColorFilter(
+                AndroidColor.rgb(35 + pressure, 65 + pressure, 160 + pressure), 
+                PorterDuff.Mode.SRC_ATOP
+            )
+            paint.colorFilter = colorFilter
 
-            val top = yPos - (glyph.bitmap.height * scale) + (glyph.baselineOffset * scale)
-            canvas.drawBitmap(glyph.bitmap, null, RectF(xPos, top, xPos + w, top + (glyph.bitmap.height * scale)), paint)
-            xPos += w + 6f
+            // 2. LINE SQUEEZE LOGIC
+            var scaleAdjust = 1.0f
+            val baseScale = FONT_SIZE / glyph.bitmap.height
+            val estimatedW = glyph.bitmap.width * baseScale
+            
+            // If the token is too wide for the line, squeeze it slightly
+            if (xPos + estimatedW > canvasWidth - 50f) {
+                if (xPos > START_X + 200f) { // If not at start of line, wrap
+                    xPos = START_X
+                    yPos += LINE_SPACING
+                } else { // If already at start, squeeze to fit margin
+                    scaleAdjust = 0.85f 
+                }
+            }
+
+            // Page Break Check
+            if (yPos > MAX_Y && isExport) break
+
+            val randomRot = Random.nextFloat() * 3f - 1.5f
+            val jitterY = Random.nextFloat() * 4f - 2f
+            val finalScale = baseScale * scaleAdjust
+            val w = glyph.bitmap.width * finalScale
+            val top = (yPos + jitterY) - (glyph.bitmap.height * finalScale) + (glyph.baselineOffset * finalScale)
+
+            val matrix = Matrix().apply {
+                postScale(finalScale, finalScale)
+                postRotate(randomRot, w / 2, FONT_SIZE / 2)
+                postTranslate(xPos, top)
+            }
+
+            canvas.drawBitmap(glyph.bitmap, matrix, paint)
+            xPos += w + 2f
         } else if (token == " ") {
-            xPos += 50f 
+            xPos += 45f
         } else if (token == "\n") {
-            xPos = 100f; yPos += lineSpacing
+            xPos = START_X
+            yPos += LINE_SPACING
         }
+        tokensConsumed++
     }
-    return LayoutResult(xPos, yPos)
+    return tokensConsumed to LayoutResult(xPos, yPos, FONT_SIZE)
 }
 
 @Composable
 fun HandwritingPage(text: String, glyphMap: Map<String, Glyph>, cursorVisible: Boolean) {
-    var caretPos by remember { mutableStateOf(LayoutResult(100f, 250f)) }
-
+    var caretPos by remember { mutableStateOf(LayoutResult(START_X, START_Y, FONT_SIZE)) }
     Canvas(modifier = Modifier.fillMaxSize()) {
         drawIntoCanvas {
-            caretPos = drawAllHandwriting(it.nativeCanvas, text, glyphMap, size.width)
+            val (_, result) = renderTextChunk(it.nativeCanvas, tokenizeMyanmar(text), glyphMap, size.width, false)
+            caretPos = result
         }
-        
         if (cursorVisible) {
-            drawLine(
-                color = Color(0xFF0A84FF),
-                start = Offset(caretPos.x + 4f, caretPos.y - 80f),
-                end = Offset(caretPos.x + 4f, caretPos.y),
-                strokeWidth = 3.dp.toPx(),
-                cap = StrokeCap.Round
-            )
+            drawLine(Color(0xFF0A84FF), Offset(caretPos.x + 2f, caretPos.y - 70f), Offset(caretPos.x + 2f, caretPos.y), 3.dp.toPx())
         }
     }
 }
 
-fun renderToBitmap(text: String, glyphMap: Map<String, Glyph>, w: Int, h: Int): Bitmap {
-    val b = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-    val c = AndroidCanvas(b)
-    c.drawColor(AndroidColor.rgb(255, 253, 245)) 
-    drawAllHandwriting(c, text, glyphMap, w.toFloat())
-    return b
+// --- Support Functions (Tokenize, Scan, Save) remain robust ---
+
+fun tokenizeMyanmar(text: String): List<String> {
+    // Regex for Myanmar Grapheme Clusters
+    val regex = Regex("[\u1000-\u1021](?:\u1039[\u1000-\u1021])?[\u102B-\u103E]*|.")
+    return regex.findAll(text).map { it.value }.toList()
 }
 
-suspend fun saveToGallery(context: android.content.Context, bmp: Bitmap) = withContext(Dispatchers.IO) {
+
+
+suspend fun scanSheetToMap(sheet: Bitmap, map: MutableMap<String, Glyph>) = withContext(Dispatchers.Default) {
+    val alphabet = listOf("က", "ခ", "ဂ", "င", "စ", "ဆ", "ဇ", "ဈ", "ည", "ဋ", "ဌ", "ဍ", "ဎ", "ဏ", "တ", "ထ", "ဒ", "ဓ", "န", "ပ") 
+    val cellW = sheet.width / 5
+    val cellH = sheet.height / 4
+    alphabet.forEachIndexed { i, char ->
+        val x = (i % 5) * cellW
+        val y = (i / 5) * cellH
+        val cell = Bitmap.createBitmap(sheet, x, y, minOf(cellW, sheet.width - x), minOf(cellH, sheet.height - y))
+        val pixels = IntArray(cell.width * cell.height)
+        cell.getPixels(pixels, 0, cell.width, 0, 0, cell.width, cell.height)
+        var lowestY = 0
+        var found = false
+        for (idx in pixels.indices) {
+            val p = pixels[idx]
+            if ((AndroidColor.red(p) + AndroidColor.green(p) + AndroidColor.blue(p)) / 3 < 160) {
+                pixels[idx] = AndroidColor.argb(255, 40, 40, 40)
+                lowestY = maxOf(lowestY, idx / cell.width)
+                found = true
+            } else pixels[idx] = AndroidColor.TRANSPARENT
+        }
+        if (found) {
+            val out = Bitmap.createBitmap(cell.width, cell.height, Bitmap.Config.ARGB_8888)
+            out.setPixels(pixels, 0, cell.width, 0, 0, cell.width, cell.height)
+            map[char] = Glyph(out, (cell.height - lowestY).toFloat())
+        }
+    }
+}
+
+suspend fun saveToGallery(context: android.content.Context, bmp: Bitmap, name: String) = withContext(Dispatchers.IO) {
     val values = ContentValues().apply {
-        put(MediaStore.Images.Media.DISPLAY_NAME, "Homework_${System.currentTimeMillis()}.png")
+        put(MediaStore.Images.Media.DISPLAY_NAME, "$name-${System.currentTimeMillis()}.png")
         put(MediaStore.Images.Media.MIME_TYPE, "image/png")
         put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES)
     }
     val uri = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
-    uri?.let { 
-        context.contentResolver.openOutputStream(it)?.use { s -> 
-            bmp.compress(Bitmap.CompressFormat.PNG, 100, s) 
-        } 
-    }
-}
-
-fun tokenizeMyanmar(text: String): List<String> {
-    val regex = Regex("[\u1000-\u1021](?:\u1039[\u1000-\u1021])?[\u102B-\u103E]*|.")
-    return regex.findAll(text).map { it.value }.toList()
+    uri?.let { context.contentResolver.openOutputStream(it)?.use { s -> bmp.compress(Bitmap.CompressFormat.PNG, 100, s) } }
 }
