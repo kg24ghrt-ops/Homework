@@ -2,6 +2,7 @@ package com.example.cahier
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Color as AndroidColor
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -21,6 +22,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import dagger.hilt.android.AndroidEntryPoint
 import java.io.File
@@ -35,32 +37,31 @@ class MainActivity : ComponentActivity() {
         setContent {
             var noteText by remember { mutableStateOf("") }
             var showTextDialog by remember { mutableStateOf(false) }
-            var showAssignDialog by remember { mutableStateOf(false) }
-            var lastPickedUri by remember { mutableStateOf<Uri?>(null) }
-            
-            // SnapshotStateMap ensures the Canvas redraws instantly when a letter is added
             val glyphMap = remember { mutableStateMapOf<Char, Bitmap>() }
             val context = LocalContext.current
 
-            // Load previously saved handwriting PNGs on startup
+            // Load saved font on startup
             LaunchedEffect(Unit) {
-                val folder = File(context.filesDir, "my_handwriting")
+                val folder = File(context.filesDir, "auto_font")
                 if (folder.exists()) {
                     folder.listFiles()?.forEach { file ->
                         val char = file.nameWithoutExtension.firstOrNull()
-                        if (char != null) {
-                            glyphMap[char] = BitmapFactory.decodeFile(file.absolutePath)
-                        }
+                        if (char != null) glyphMap[char] = BitmapFactory.decodeFile(file.absolutePath)
                     }
                 }
             }
 
-            val launcher = rememberLauncherForActivityResult(
+            // Launcher for the SINGLE alphabet sheet
+            val sheetLauncher = rememberLauncherForActivityResult(
                 contract = ActivityResultContracts.GetContent()
             ) { uri: Uri? ->
-                if (uri != null) {
-                    lastPickedUri = uri
-                    showAssignDialog = true 
+                uri?.let {
+                    val inputStream = context.contentResolver.openInputStream(it)
+                    val fullSheet = BitmapFactory.decodeStream(inputStream)
+                    if (fullSheet != null) {
+                        // Automatically slice the sheet into 26 letters
+                        processAlphabetSheet(context, fullSheet, glyphMap)
+                    }
                 }
             }
 
@@ -69,9 +70,11 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     floatingActionButton = {
                         Column(horizontalAlignment = Alignment.End) {
-                            SmallFloatingActionButton(onClick = { launcher.launch("image/png") }) {
-                                Text("PNG", modifier = Modifier.padding(horizontal = 8.dp))
-                            }
+                            ExtendedFloatingActionButton(
+                                text = { Text("UPLOAD SHEET") },
+                                icon = { Text("📄") },
+                                onClick = { sheetLauncher.launch("image/*") }
+                            )
                             Spacer(modifier = Modifier.height(12.dp))
                             FloatingActionButton(onClick = { showTextDialog = true }) {
                                 Text("EDIT", modifier = Modifier.padding(horizontal = 16.dp))
@@ -81,32 +84,8 @@ class MainActivity : ComponentActivity() {
                 ) { innerPadding ->
                     Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
                         PaperView(text = noteText, glyphMap = glyphMap)
-
-                        if (showAssignDialog) {
-                            AssignGlyphDialog(
-                                onDismiss = { showAssignDialog = false },
-                                onConfirm = { char ->
-                                    lastPickedUri?.let { uri ->
-                                        val inputStream = context.contentResolver.openInputStream(uri)
-                                        val bitmap = BitmapFactory.decodeStream(inputStream)
-                                        if (bitmap != null) {
-                                            val cleanChar = char.lowercaseChar()
-                                            glyphMap[cleanChar] = bitmap
-                                            // Save to internal storage
-                                            saveGlyphToDisk(context, cleanChar, bitmap)
-                                        }
-                                    }
-                                    showAssignDialog = false
-                                }
-                            )
-                        }
-
                         if (showTextDialog) {
-                            HandwritingInputDialog(
-                                initialText = noteText,
-                                onDismiss = { showTextDialog = false },
-                                onConfirm = { noteText = it.lowercase(); showTextDialog = false }
-                            )
+                            HandwritingInputDialog(noteText, { showTextDialog = false }, { noteText = it; showTextDialog = false })
                         }
                     }
                 }
@@ -115,89 +94,114 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// Logic to save the PNG so you don't have to re-upload every time
-fun saveGlyphToDisk(context: android.content.Context, char: Char, bitmap: Bitmap) {
-    val folder = File(context.filesDir, "my_handwriting")
-    if (!folder.exists()) folder.mkdirs()
-    val file = File(folder, "$char.png")
-    FileOutputStream(file).use { out ->
-        bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+/**
+ * Slices one image into 26 blocks and removes background
+ */
+fun processAlphabetSheet(context: android.content.Context, sheet: Bitmap, glyphMap: MutableMap<Char, Bitmap>) {
+    val cleanSheet = removeBackground(sheet)
+    
+    // We assume 3 rows and 9-10 letters per row based on your photo
+    val rows = 3
+    val cols = 10 
+    val cellWidth = cleanSheet.width / cols
+    val cellHeight = cleanSheet.height / rows
+    
+    val alphabet = "abcdefghijklmnopqrstuvwxyz"
+    var charIndex = 0
+
+    for (r in 0 until rows) {
+        for (c in 0 until cols) {
+            if (charIndex >= alphabet.length) break
+            
+            val char = alphabet[charIndex]
+            val x = c * cellWidth
+            val y = r * cellHeight
+            
+            // Create a small bitmap for this specific letter
+            val letterBitmap = Bitmap.createBitmap(cleanSheet, x, y, cellWidth, cellHeight)
+            
+            glyphMap[char] = letterBitmap
+            saveToDisk(context, char, letterBitmap)
+            charIndex++
+        }
     }
 }
 
-@Composable
-fun AssignGlyphDialog(onDismiss: () -> Unit, onConfirm: (Char) -> Unit) {
-    var charInput by remember { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Assign PNG to Letter") },
-        text = {
-            TextField(
-                value = charInput,
-                onValueChange = { if (it.length <= 1) charInput = it },
-                placeholder = { Text("e.g. 'a'") }
-            )
-        },
-        confirmButton = {
-            Button(onClick = { if (charInput.isNotEmpty()) onConfirm(charInput[0]) }) {
-                Text("Save")
-            }
+fun removeBackground(source: Bitmap): Bitmap {
+    val width = source.width
+    val height = source.height
+    val newBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+    val pixels = IntArray(width * height)
+    source.getPixels(pixels, 0, width, 0, 0, width, height)
+
+    for (i in pixels.indices) {
+        val color = pixels[i]
+        val r = AndroidColor.red(color)
+        val g = AndroidColor.green(color)
+        val b = AndroidColor.blue(color)
+        // Remove white background (RGB > 180)
+        if (r > 180 && g > 180 && b > 180) {
+            pixels[i] = AndroidColor.TRANSPARENT
         }
-    )
+    }
+    newBitmap.setPixels(pixels, 0, width, 0, 0, width, height)
+    return newBitmap
+}
+
+fun saveToDisk(context: android.content.Context, char: Char, bitmap: Bitmap) {
+    val folder = File(context.filesDir, "auto_font")
+    if (!folder.exists()) folder.mkdirs()
+    FileOutputStream(File(folder, "$char.png")).use { out ->
+        bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+    }
 }
 
 @Composable
 fun PaperView(text: String, glyphMap: Map<Char, Bitmap>) {
     Canvas(modifier = Modifier.fillMaxSize().background(Color.White)) {
         val lineBlue = Color(0xFFADCEEB)
-        val horizontalMargin = 110f
         val lineSpacing = 65f
         val headerSpace = 220f
+        val marginX = 110f
 
-        // Draw Notebook Lines
-        var yPos = headerSpace
-        while (yPos < size.height) {
-            drawLine(lineBlue, Offset(0f, yPos), Offset(size.width, yPos), 2f)
-            yPos += lineSpacing
+        for (i in 0..size.height.toInt() step lineSpacing.toInt()) {
+            val y = headerSpace + i
+            drawLine(lineBlue, Offset(0f, y), Offset(size.width, y), 2f)
         }
 
-        // Render Handwriting
-        var currentX = horizontalMargin + 25f
-        var currentY = headerSpace - 65f 
+        var curX = marginX + 20f
+        var curY = headerSpace - 55f 
 
         text.forEach { char ->
-            val bitmap = glyphMap[char]
+            val cleanChar = char.lowercaseChar()
+            val bitmap = glyphMap[cleanChar]
             if (bitmap != null) {
-                // Scale glyph to fit the line height (55f)
-                val targetH = 55f
+                val targetH = 55f 
                 val scale = targetH / bitmap.height
-                val scaledW = bitmap.width * scale
+                val finalW = bitmap.width * scale
 
-                if (currentX + scaledW > size.width - 40f) {
-                    currentX = horizontalMargin + 25f
-                    currentY += lineSpacing
+                if (curX + finalW > size.width - 40f) {
+                    curX = marginX + 20f
+                    curY += lineSpacing
                 }
 
                 drawImage(
                     image = bitmap.asImageBitmap(),
-                    dstOffset = IntOffset(currentX.toInt(), currentY.toInt())
-                    // DrawImage uses the original size by default; 
-                    // To handle scaling properly in Canvas, we use translate/scale or dstSize
+                    dstOffset = IntOffset(curX.toInt(), curY.toInt()),
+                    dstSize = IntSize(finalW.toInt(), targetH.toInt())
                 )
-                currentX += scaledW + 12f
-            } else if (char == ' ') {
-                currentX += 45f
-            }
+                curX += finalW + 5f
+            } else if (char == ' ') { curX += 45f }
         }
     }
 }
 
 @Composable
-fun HandwritingInputDialog(initialText: String, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
-    var text by remember { mutableStateOf(initialText) }
+fun HandwritingInputDialog(initial: String, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
+    var text by remember { mutableStateOf(initial) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Type your note") },
+        title = { Text("Write Note") },
         text = { TextField(value = text, onValueChange = { text = it }) },
         confirmButton = { Button(onClick = { onConfirm(text) }) { Text("Write") } }
     )
