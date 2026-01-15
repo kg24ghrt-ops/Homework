@@ -1,9 +1,15 @@
 package com.example.cahier
 
+import android.content.ContentValues
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
 import android.graphics.Color as AndroidColor
+import android.graphics.Rect
+import android.os.Build
 import android.os.Bundle
+import android.os.Environment
+import android.provider.MediaStore
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -16,6 +22,9 @@ import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -26,6 +35,7 @@ import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
@@ -46,11 +56,14 @@ class MainActivity : ComponentActivity() {
         setContent {
             var selectedInk by remember { mutableStateOf(InkType.BLUE) }
             var tolerance by remember { mutableStateOf(0.3f) }
-            var handwritingBitmap by remember { mutableStateOf<Bitmap?>(null) }
+            var typedText by remember { mutableStateOf("") }
+            val glyphMap = remember { mutableStateMapOf<Char, Bitmap>() }
             var isProcessing by remember { mutableStateOf(false) }
             var processingProgress by remember { mutableStateOf(0f) }
             var scale by remember { mutableStateOf(1f) }
             var offset by remember { mutableStateOf(Offset.Zero) }
+            var showToast by remember { mutableStateOf(false) }
+            var toastMessage by remember { mutableStateOf("") }
             val scope = rememberCoroutineScope()
             val context = LocalContext.current
 
@@ -64,21 +77,26 @@ class MainActivity : ComponentActivity() {
                         try {
                             val bitmap = withContext(Dispatchers.IO) {
                                 val inputStream = context.contentResolver.openInputStream(it)
-                                val options = BitmapFactory.Options().apply {
-                                    inSampleSize = 1 // Full quality for realistic look
-                                }
+                                val options = BitmapFactory.Options()
                                 BitmapFactory.decodeStream(inputStream, null, options)
                             }
                             
                             if (bitmap != null) {
-                                val processed = processHandwriting(bitmap, selectedInk, tolerance) { progress ->
+                                extractHandwritingGlyphs(
+                                    bitmap, 
+                                    selectedInk, 
+                                    tolerance, 
+                                    glyphMap
+                                ) { progress ->
                                     processingProgress = progress
                                 }
-                                handwritingBitmap?.recycle()
-                                handwritingBitmap = processed
+                                toastMessage = "Handwriting loaded! ${glyphMap.size} characters mapped"
+                                showToast = true
                             }
                         } catch (e: Exception) {
                             e.printStackTrace()
+                            toastMessage = "Error loading handwriting"
+                            showToast = true
                         } finally {
                             isProcessing = false
                         }
@@ -92,20 +110,43 @@ class MainActivity : ComponentActivity() {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(Color(0xFF2C2C2E)) // Dark desk surface
+                        .background(Color(0xFF2C2C2E))
                 ) {
-                    // Realistic Paper Sheet with Shadow
+                    // Realistic Paper with handwriting
                     RealisticPaperView(
-                        handwritingBitmap = handwritingBitmap,
+                        text = typedText,
+                        glyphMap = glyphMap,
                         scale = scale,
                         offset = offset,
                         onTransform = { scaleChange, offsetChange ->
                             scale = (scale * scaleChange).coerceIn(0.5f, 3f)
                             offset += offsetChange
+                        },
+                        onSaveAsPng = { paperBitmap ->
+                            scope.launch {
+                                val saved = savePaperAsPng(context, paperBitmap)
+                                toastMessage = if (saved) "Saved to Gallery!" else "Failed to save"
+                                showToast = true
+                            }
                         }
                     )
 
-                    // Floating Control Panel
+                    // Toast notification
+                    if (showToast) {
+                        LaunchedEffect(Unit) {
+                            kotlinx.coroutines.delay(2000)
+                            showToast = false
+                        }
+                        Snackbar(
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .padding(16.dp)
+                        ) {
+                            Text(toastMessage)
+                        }
+                    }
+
+                    // Control Panel
                     Card(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
@@ -120,49 +161,76 @@ class MainActivity : ComponentActivity() {
                             modifier = Modifier.padding(20.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Text(
-                                "Your Handwriting Notebook",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = Color.White
+                            // Typing Area
+                            BasicTextField(
+                                value = typedText,
+                                onValueChange = { typedText = it },
+                                textStyle = TextStyle(
+                                    color = Color.White,
+                                    fontSize = 16.sp
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(
+                                        Color(0xFF2C2C2E),
+                                        RoundedCornerShape(8.dp)
+                                    )
+                                    .padding(16.dp)
+                                    .height(80.dp),
+                                decorationBox = { innerTextField ->
+                                    Box {
+                                        if (typedText.isEmpty()) {
+                                            Text(
+                                                "Type here and watch your handwriting appear...",
+                                                color = Color.Gray,
+                                                fontSize = 14.sp
+                                            )
+                                        }
+                                        innerTextField()
+                                    }
+                                }
                             )
-                            
+
                             Spacer(modifier = Modifier.height(16.dp))
-                            
+
                             // Color Selection
-                            Text(
-                                "Ink Color:",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = Color.White.copy(alpha = 0.7f)
-                            )
                             Row(
-                                modifier = Modifier.padding(vertical = 12.dp),
-                                horizontalArrangement = Arrangement.spacedBy(20.dp)
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                InkColorButton(
-                                    color = Color(0xFF1E3A8A),
-                                    isSelected = selectedInk == InkType.BLUE,
-                                    label = "Blue"
-                                ) { selectedInk = InkType.BLUE }
-                                
-                                InkColorButton(
-                                    color = Color(0xFFDC2626),
-                                    isSelected = selectedInk == InkType.RED,
-                                    label = "Red"
-                                ) { selectedInk = InkType.RED }
-                                
-                                InkColorButton(
-                                    color = Color(0xFF1F2937),
-                                    isSelected = selectedInk == InkType.BLACK,
-                                    label = "Black"
-                                ) { selectedInk = InkType.BLACK }
+                                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    InkColorButton(
+                                        color = Color(0xFF1E3A8A),
+                                        isSelected = selectedInk == InkType.BLUE,
+                                        label = "Blue"
+                                    ) { selectedInk = InkType.BLUE }
+                                    
+                                    InkColorButton(
+                                        color = Color(0xFFDC2626),
+                                        isSelected = selectedInk == InkType.RED,
+                                        label = "Red"
+                                    ) { selectedInk = InkType.RED }
+                                    
+                                    InkColorButton(
+                                        color = Color(0xFF1F2937),
+                                        isSelected = selectedInk == InkType.BLACK,
+                                        label = "Black"
+                                    ) { selectedInk = InkType.BLACK }
+                                }
                             }
 
-                            // Sensitivity Slider
-                            Text(
-                                "Sensitivity: ${(tolerance * 100).toInt()}%",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Color.White.copy(alpha = 0.7f)
-                            )
+                            // Sensitivity
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    "Sensitivity: ${(tolerance * 100).toInt()}%",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.White.copy(alpha = 0.7f),
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
                             Slider(
                                 value = tolerance,
                                 onValueChange = { tolerance = it },
@@ -174,14 +242,14 @@ class MainActivity : ComponentActivity() {
                                 )
                             )
 
-                            Spacer(modifier = Modifier.height(12.dp))
+                            Spacer(modifier = Modifier.height(8.dp))
 
                             // Scan Button
                             Button(
                                 onClick = { sheetLauncher.launch("image/*") },
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(56.dp),
+                                    .height(50.dp),
                                 enabled = !isProcessing,
                                 shape = RoundedCornerShape(12.dp),
                                 colors = ButtonDefaults.buttonColors(
@@ -190,10 +258,10 @@ class MainActivity : ComponentActivity() {
                             ) {
                                 Text(
                                     if (isProcessing) 
-                                        "Processing... ${(processingProgress * 100).toInt()}%"
+                                        "Learning... ${(processingProgress * 100).toInt()}%"
                                     else 
-                                        "SCAN MY HANDWRITING",
-                                    fontSize = 16.sp
+                                        "SCAN HANDWRITING SHEET",
+                                    fontSize = 14.sp
                                 )
                             }
 
@@ -202,10 +270,17 @@ class MainActivity : ComponentActivity() {
                                     progress = processingProgress,
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(top = 12.dp),
+                                        .padding(top = 8.dp),
                                     color = Color(0xFF0A84FF)
                                 )
                             }
+
+                            Text(
+                                "Tip: Write A-Z, a-z, 0-9 and symbols on a white sheet, then scan",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.Gray,
+                                modifier = Modifier.padding(top = 8.dp)
+                            )
                         }
                     }
                 }
@@ -224,14 +299,14 @@ fun InkColorButton(
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             modifier = Modifier
-                .size(56.dp)
+                .size(48.dp)
                 .shadow(
-                    elevation = if (isSelected) 8.dp else 2.dp,
+                    elevation = if (isSelected) 6.dp else 2.dp,
                     shape = CircleShape
                 )
                 .background(color, CircleShape)
                 .border(
-                    width = if (isSelected) 3.dp else 0.dp,
+                    width = if (isSelected) 2.dp else 0.dp,
                     color = Color.White,
                     shape = CircleShape
                 )
@@ -239,27 +314,30 @@ fun InkColorButton(
         )
         Text(
             text = label,
-            fontSize = 12.sp,
+            fontSize = 10.sp,
             color = if (isSelected) Color.White else Color.Gray,
-            modifier = Modifier.padding(top = 6.dp)
+            modifier = Modifier.padding(top = 4.dp)
         )
     }
 }
 
 @Composable
 fun RealisticPaperView(
-    handwritingBitmap: Bitmap?,
+    text: String,
+    glyphMap: Map<Char, Bitmap>,
     scale: Float,
     offset: Offset,
-    onTransform: (Float, Offset) -> Unit
+    onTransform: (Float, Offset) -> Unit,
+    onSaveAsPng: (Bitmap) -> Unit
 ) {
+    var paperBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    
     Box(
         modifier = Modifier
             .fillMaxSize()
             .padding(24.dp),
         contentAlignment = Alignment.Center
     ) {
-        // Paper Sheet with realistic shadow and texture
         Canvas(
             modifier = Modifier
                 .fillMaxSize()
@@ -272,8 +350,8 @@ fun RealisticPaperView(
                 .background(
                     brush = Brush.verticalGradient(
                         colors = listOf(
-                            Color(0xFFFFFDF7), // Warm paper white
-                            Color(0xFFFFFBF0)  // Slightly cream at bottom
+                            Color(0xFFFFFDF7),
+                            Color(0xFFFFFBF0)
                         )
                     ),
                     shape = RoundedCornerShape(4.dp)
@@ -287,7 +365,18 @@ fun RealisticPaperView(
             val paperWidth = size.width
             val paperHeight = size.height
 
-            // Draw subtle paper texture with noise
+            // Create bitmap for export
+            val bitmap = Bitmap.createBitmap(
+                paperWidth.toInt(),
+                paperHeight.toInt(),
+                Bitmap.Config.ARGB_8888
+            )
+            val canvas = Canvas(bitmap)
+
+            // Draw paper background
+            canvas.drawColor(AndroidColor.rgb(255, 253, 247))
+
+            // Paper texture
             for (i in 0..100) {
                 val x = (Math.random() * paperWidth).toFloat()
                 val y = (Math.random() * paperHeight).toFloat()
@@ -298,113 +387,212 @@ fun RealisticPaperView(
                 )
             }
 
-            // Draw ruled lines (college-ruled style)
-            val lineSpacing = 32f
+            // Ruled lines
+            val lineSpacing = 40f
             val marginLeft = 80f
-            var yPos = 60f
+            var yPos = 80f
             
             while (yPos < paperHeight - 40) {
-                // Horizontal ruled lines
                 drawLine(
                     color = Color(0xFFB8D4E8).copy(alpha = 0.4f),
                     start = Offset(marginLeft + 20, yPos),
                     end = Offset(paperWidth - 60, yPos),
                     strokeWidth = 1f
                 )
+                canvas.drawLine(
+                    marginLeft + 20, yPos,
+                    paperWidth - 60, yPos,
+                    android.graphics.Paint().apply {
+                        color = AndroidColor.argb(100, 184, 212, 232)
+                        strokeWidth = 1f
+                    }
+                )
                 yPos += lineSpacing
             }
 
-            // Red margin line (left side)
+            // Margin line
             drawLine(
                 color = Color(0xFFE57373).copy(alpha = 0.5f),
                 start = Offset(marginLeft, 40f),
                 end = Offset(marginLeft, paperHeight - 40),
                 strokeWidth = 1.5f
             )
-
-            // Subtle paper edge shadows
-            drawRect(
-                brush = Brush.horizontalGradient(
-                    colors = listOf(
-                        Color.Black.copy(alpha = 0.03f),
-                        Color.Transparent
-                    ),
-                    startX = 0f,
-                    endX = 20f
-                )
+            canvas.drawLine(
+                marginLeft, 40f,
+                marginLeft, paperHeight - 40,
+                android.graphics.Paint().apply {
+                    color = AndroidColor.argb(128, 229, 115, 115)
+                    strokeWidth = 1.5f
+                }
             )
 
-            // Draw the scanned handwriting
-            handwritingBitmap?.let { bitmap ->
-                drawIntoCanvas { canvas ->
-                    canvas.save()
-                    canvas.translate(offset.x, offset.y)
-                    canvas.scale(scale, scale)
-                    
-                    // Center the handwriting on paper
-                    val x = (paperWidth - bitmap.width) / 2
-                    val y = (paperHeight - bitmap.height) / 2
-                    
-                    canvas.nativeCanvas.drawBitmap(
-                        bitmap,
-                        x,
-                        y,
-                        android.graphics.Paint().apply {
-                            isAntiAlias = true
-                            isDither = true
+            // Render handwritten text
+            var xPos = marginLeft + 30f
+            var yPos2 = 80f
+            val charSpacing = 4f
+            
+            text.forEach { char ->
+                when (char) {
+                    '\n' -> {
+                        xPos = marginLeft + 30f
+                        yPos2 += lineSpacing
+                    }
+                    ' ' -> {
+                        xPos += 15f
+                    }
+                    else -> {
+                        glyphMap[char]?.let { glyph ->
+                            // Draw on Canvas (visible)
+                            drawIntoCanvas { 
+                                it.nativeCanvas.drawBitmap(
+                                    glyph,
+                                    xPos,
+                                    yPos2 - glyph.height * 0.7f,
+                                    android.graphics.Paint().apply {
+                                        isAntiAlias = true
+                                    }
+                                )
+                            }
+                            // Draw on export bitmap
+                            canvas.drawBitmap(
+                                glyph,
+                                xPos,
+                                yPos2 - glyph.height * 0.7f,
+                                android.graphics.Paint().apply {
+                                    isAntiAlias = true
+                                }
+                            )
+                            xPos += glyph.width + charSpacing
                         }
-                    )
-                    canvas.restore()
+                    }
+                }
+                
+                // Wrap to next line if needed
+                if (xPos > paperWidth - 100) {
+                    xPos = marginLeft + 30f
+                    yPos2 += lineSpacing
                 }
             }
+
+            paperBitmap = bitmap
+        }
+
+        // Save button
+        if (text.isNotEmpty() && glyphMap.isNotEmpty()) {
+            FloatingActionButton(
+                onClick = { paperBitmap?.let { onSaveAsPng(it) } },
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(16.dp),
+                containerColor = Color(0xFF0A84FF)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Download,
+                    contentDescription = "Save as PNG",
+                    tint = Color.White
+                )
+            }
         }
     }
 }
 
 /**
- * Process handwriting with realistic ink preservation
+ * Extract individual character glyphs from handwriting sheet
  */
-suspend fun processHandwriting(
-    source: Bitmap,
+suspend fun extractHandwritingGlyphs(
+    sheet: Bitmap,
     inkType: InkType,
     tolerance: Float,
-    onProgress: (Float) -> Unit = {}
-): Bitmap = withContext(Dispatchers.Default) {
-    val result = Bitmap.createBitmap(
-        source.width,
-        source.height,
-        Bitmap.Config.ARGB_8888
-    )
+    glyphMap: MutableMap<Char, Bitmap>,
+    onProgress: (Float) -> Unit
+) = withContext(Dispatchers.Default) {
+    // Define expected character grid
+    val characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,!?;:-() "
     
-    val totalPixels = source.width * source.height
-    var processedPixels = 0
+    // Assume 10 columns layout
+    val cols = 10
+    val rows = (characters.length + cols - 1) / cols
+    val cellWidth = sheet.width / cols
+    val cellHeight = sheet.height / rows
     
-    for (y in 0 until source.height) {
-        for (x in 0 until source.width) {
-            val pixel = source.getPixel(x, y)
-            
-            if (isInkColor(pixel, inkType, tolerance)) {
-                // Preserve the exact darkness/pressure of the original stroke
-                val enhancedPixel = enhanceInkPixel(pixel, inkType)
-                result.setPixel(x, y, enhancedPixel)
-            } else {
-                result.setPixel(x, y, AndroidColor.TRANSPARENT)
-            }
-            
-            processedPixels++
-            if (processedPixels % 10000 == 0) {
-                onProgress(processedPixels.toFloat() / totalPixels)
-            }
+    glyphMap.clear()
+    
+    characters.forEachIndexed { index, char ->
+        val col = index % cols
+        val row = index / cols
+        
+        val rect = Rect(
+            col * cellWidth,
+            row * cellHeight,
+            (col + 1) * cellWidth,
+            (row + 1) * cellHeight
+        )
+        
+        val glyph = extractAndCleanGlyph(sheet, rect, inkType, tolerance)
+        if (glyph != null) {
+            glyphMap[char] = glyph
         }
+        
+        onProgress((index + 1).toFloat() / characters.length)
     }
-    
-    onProgress(1f)
-    result
 }
 
 /**
- * Advanced HSV-based ink detection
+ * Extract a single glyph and crop to content
  */
+fun extractAndCleanGlyph(
+    source: Bitmap,
+    rect: Rect,
+    inkType: InkType,
+    tolerance: Float
+): Bitmap? {
+    var minX = rect.width()
+    var minY = rect.height()
+    var maxX = 0
+    var maxY = 0
+    var hasInk = false
+
+    // Find bounding box
+    for (y in 0 until rect.height()) {
+        for (x in 0 until rect.width()) {
+            val pixel = source.getPixel(rect.left + x, rect.top + y)
+            if (isInkColor(pixel, inkType, tolerance)) {
+                hasInk = true
+                minX = min(minX, x)
+                minY = min(minY, y)
+                maxX = max(maxX, x)
+                maxY = max(maxY, y)
+            }
+        }
+    }
+
+    if (!hasInk) return null
+
+    // Add padding
+    val padding = 2
+    minX = max(0, minX - padding)
+    minY = max(0, minY - padding)
+    maxX = min(rect.width() - 1, maxX + padding)
+    maxY = min(rect.height() - 1, maxY + padding)
+
+    val glyphWidth = maxX - minX + 1
+    val glyphHeight = maxY - minY + 1
+
+    val glyph = Bitmap.createBitmap(glyphWidth, glyphHeight, Bitmap.Config.ARGB_8888)
+
+    // Extract ink pixels only
+    for (y in minY..maxY) {
+        for (x in minX..maxX) {
+            val pixel = source.getPixel(rect.left + x, rect.top + y)
+            if (isInkColor(pixel, inkType, tolerance)) {
+                glyph.setPixel(x - minX, y - minY, enhanceInkPixel(pixel, inkType))
+            }
+        }
+    }
+
+    return glyph
+}
+
 fun isInkColor(pixel: Int, type: InkType, tolerance: Float): Boolean {
     val hsv = FloatArray(3)
     AndroidColor.colorToHSV(pixel, hsv)
@@ -431,22 +619,50 @@ fun isInkColor(pixel: Int, type: InkType, tolerance: Float): Boolean {
     }
 }
 
-/**
- * Enhance ink while preserving natural stroke variation
- */
 fun enhanceInkPixel(pixel: Int, type: InkType): Int {
     val r = AndroidColor.red(pixel)
     val g = AndroidColor.green(pixel)
     val b = AndroidColor.blue(pixel)
     
-    // Preserve exact pressure/darkness from original writing
     val brightness = (r + g + b) / 3
     val alpha = ((255 - brightness) * 1.3).toInt().coerceIn(180, 255)
     
-    // Realistic ink colors
     return when (type) {
-        InkType.BLUE -> AndroidColor.argb(alpha, 25, 55, 135)   // Classic blue ink
-        InkType.RED -> AndroidColor.argb(alpha, 200, 30, 30)    // Red pen ink
-        InkType.BLACK -> AndroidColor.argb(alpha, 20, 20, 25)   // Black ink
+        InkType.BLUE -> AndroidColor.argb(alpha, 25, 55, 135)
+        InkType.RED -> AndroidColor.argb(alpha, 200, 30, 30)
+        InkType.BLACK -> AndroidColor.argb(alpha, 20, 20, 25)
+    }
+}
+
+suspend fun savePaperAsPng(context: android.content.Context, bitmap: Bitmap): Boolean {
+    return withContext(Dispatchers.IO) {
+        try {
+            val filename = "handwriting_${System.currentTimeMillis()}.png"
+            
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val values = ContentValues().apply {
+                    put(MediaStore.Images.Media.DISPLAY_NAME, filename)
+                    put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+                    put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES)
+                }
+                
+                val uri = context.contentResolver.insert(
+                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                    values
+                )
+                
+                uri?.let {
+                    context.contentResolver.openOutputStream(it)?.use { out ->
+                        bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                    }
+                    true
+                } ?: false
+            } else {
+                false
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
     }
 }
