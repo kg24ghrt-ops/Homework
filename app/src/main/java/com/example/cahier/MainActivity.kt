@@ -6,6 +6,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Canvas as AndroidCanvas
 import android.graphics.Paint
 import android.graphics.RectF
+import android.os.Bundle // CRITICAL MISSING IMPORT
 import android.os.Environment
 import android.provider.MediaStore
 import androidx.activity.ComponentActivity
@@ -28,9 +29,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import android.graphics.Color as AndroidColor
 
-// Data class to store the bitmap and its distance from the bottom to the ink baseline
+// Data structures for Layout and Glyphs
 data class Glyph(val bitmap: Bitmap, val baselineOffset: Float)
-// Tracking object for the caret/cursor
 data class LayoutResult(val x: Float, val y: Float)
 
 class MainActivity : ComponentActivity() {
@@ -43,7 +43,6 @@ class MainActivity : ComponentActivity() {
             val glyphMap = remember { mutableStateMapOf<String, Glyph>() }
             var cursorVisible by remember { mutableStateOf(true) }
 
-            // 1. Scan Sheet Pipeline
             val pickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
                 uri?.let {
                     scope.launch {
@@ -54,15 +53,19 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            // Caret Blink Effect
-            LaunchedEffect(Unit) { while(true) { delay(500); cursorVisible = !cursorVisible } }
+            LaunchedEffect(Unit) { 
+                while(true) { 
+                    delay(500)
+                    cursorVisible = !cursorVisible 
+                } 
+            }
 
             Column(Modifier.fillMaxSize().padding(16.dp)) {
                 TextField(
                     value = typedText, 
                     onValueChange = { typedText = it }, 
                     modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text("Type Myanmar text here...") }
+                    placeholder = { Text("Type Myanmar text...") }
                 )
                 Row(Modifier.padding(vertical = 8.dp)) {
                     Button(onClick = { pickerLauncher.launch("image/*") }) { Text("Scan Sheet") }
@@ -83,25 +86,32 @@ class MainActivity : ComponentActivity() {
 }
 
 /**
- * 2. SCANNING ENGINE: Slices the image based on a 5x4 grid
+ * SCANNING ENGINE: Slices the image into a grid.
  */
 suspend fun scanSheetToMap(sheet: Bitmap, map: MutableMap<String, Glyph>) = withContext(Dispatchers.Default) {
     val alphabet = listOf("က", "ခ", "ဂ", "င", "စ", "ဆ", "ဇ", "ဈ", "ည", "ဋ", "ဌ", "ဍ", "ဎ", "ဏ", "တ", "ထ", "ဒ", "ဓ", "န", "ပ") 
     val cols = 5
+    val rows = 4 
     val cellW = sheet.width / cols
-    val cellH = sheet.height / 4
+    val cellH = sheet.height / rows
 
     alphabet.forEachIndexed { i, char ->
-        val x = (i % cols) * cellW
-        val y = (i / cols) * cellH
-        val cell = Bitmap.createBitmap(sheet, x, y, cellW, cellH)
-        val glyph = extractGlyph(cell)
-        if (glyph != null) map[char] = glyph
+        if (i < alphabet.size) {
+            val x = (i % cols) * cellW
+            val y = (i / cols) * cellH
+            // Avoid illegal crop if dimensions slightly off
+            val safeW = if (x + cellW <= sheet.width) cellW else sheet.width - x
+            val safeH = if (y + cellH <= sheet.height) cellH else sheet.height - y
+            
+            val cell = Bitmap.createBitmap(sheet, x, y, safeW, safeH)
+            val glyph = extractGlyph(cell)
+            if (glyph != null) map[char] = glyph
+        }
     }
 }
 
 /**
- * 3. INK EXTRACTION: Improved luminance check & loop index fix
+ * INK EXTRACTION: Logic improved to prevent data corruption.
  */
 fun extractGlyph(source: Bitmap): Glyph? {
     val w = source.width
@@ -109,6 +119,7 @@ fun extractGlyph(source: Bitmap): Glyph? {
     val pixels = IntArray(w * h)
     source.getPixels(pixels, 0, w, 0, 0, w, h)
     
+    val resultPixels = IntArray(w * h)
     var lowestInkY = 0
     var foundInk = false
 
@@ -118,24 +129,24 @@ fun extractGlyph(source: Bitmap): Glyph? {
             val p = pixels[idx]
             val luminance = (AndroidColor.red(p) + AndroidColor.green(p) + AndroidColor.blue(p)) / 3
             
-            // Detect ink (anything darker than light gray)
             if (luminance < 160) { 
                 lowestInkY = maxOf(lowestInkY, y)
                 foundInk = true
-                pixels[idx] = AndroidColor.argb(255, 30, 60, 150) // Force clean pen-blue
+                resultPixels[idx] = AndroidColor.argb(255, 30, 60, 150)
             } else {
-                pixels[idx] = AndroidColor.TRANSPARENT
+                resultPixels[idx] = AndroidColor.TRANSPARENT
             }
         }
     }
+    
     if (!foundInk) return null
     val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-    out.setPixels(pixels, 0, w, 0, 0, w, h)
+    out.setPixels(resultPixels, 0, w, 0, 0, w, h)
     return Glyph(out, (h - lowestInkY).toFloat())
 }
 
 /**
- * 4. CENTRAL RENDERING: Shared by both Screen (UI) and Export (Bitmap)
+ * DRAWING ENGINE: Unified logic for UI and Export.
  */
 fun drawAllHandwriting(
     canvas: AndroidCanvas, 
@@ -158,11 +169,9 @@ fun drawAllHandwriting(
             
             if (xPos + w > canvasWidth - 60f) { xPos = 100f; yPos += lineSpacing }
 
-            // BASELINE ALIGNMENT MATH:
-            // Normalize all characters to sit on yPos
             val top = yPos - (glyph.bitmap.height * scale) + (glyph.baselineOffset * scale)
             canvas.drawBitmap(glyph.bitmap, null, RectF(xPos, top, xPos + w, top + (glyph.bitmap.height * scale)), paint)
-            xPos += w + 4f
+            xPos += w + 6f
         } else if (token == " ") {
             xPos += 50f 
         } else if (token == "\n") {
@@ -181,12 +190,11 @@ fun HandwritingPage(text: String, glyphMap: Map<String, Glyph>, cursorVisible: B
             caretPos = drawAllHandwriting(it.nativeCanvas, text, glyphMap, size.width)
         }
         
-        // Render Cursor
         if (cursorVisible) {
             drawLine(
                 color = Color(0xFF0A84FF),
-                start = Offset(caretPos.x + 5f, caretPos.y - 75f),
-                end = Offset(caretPos.x + 5f, caretPos.y + 5f),
+                start = Offset(caretPos.x + 4f, caretPos.y - 80f),
+                end = Offset(caretPos.x + 4f, caretPos.y),
                 strokeWidth = 3.dp.toPx(),
                 cap = StrokeCap.Round
             )
@@ -194,13 +202,10 @@ fun HandwritingPage(text: String, glyphMap: Map<String, Glyph>, cursorVisible: B
     }
 }
 
-/**
- * 5. EXPORT PIPELINE
- */
 fun renderToBitmap(text: String, glyphMap: Map<String, Glyph>, w: Int, h: Int): Bitmap {
     val b = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
     val c = AndroidCanvas(b)
-    c.drawColor(AndroidColor.rgb(255, 253, 245)) // Background color
+    c.drawColor(AndroidColor.rgb(255, 253, 245)) 
     drawAllHandwriting(c, text, glyphMap, w.toFloat())
     return b
 }
