@@ -9,8 +9,6 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -31,27 +29,23 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         setContent {
-            // State for the text to be rendered
             var noteText by remember { mutableStateOf("") }
-            // State for the input dialog
             var showDialog by remember { mutableStateOf(false) }
-            // Load your glyphs (a.png, b.png, etc.)
             val glyphs = rememberGlyphs()
 
             MaterialTheme(colorScheme = lightColorScheme()) {
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
                     floatingActionButton = {
+                        // Using a simple Text label to avoid missing icon library errors
                         FloatingActionButton(onClick = { showDialog = true }) {
-                            Icon(Icons.Default.Edit, contentDescription = "Input Handwriting")
+                            Text("EDIT", modifier = Modifier.padding(horizontal = 16.dp))
                         }
                     }
                 ) { innerPadding ->
                     Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
-                        // The Canvas that draws your custom notebook and glyphs
                         PaperView(text = noteText, glyphMap = glyphs)
 
-                        // Input Dialog for typing/pasting
                         if (showDialog) {
                             HandwritingInputDialog(
                                 initialText = noteText,
@@ -78,7 +72,7 @@ fun HandwritingInputDialog(
     var text by remember { mutableStateOf(initialText) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Input your text") },
+        title = { Text("Enter Text (a-z)") },
         text = {
             TextField(
                 value = text,
@@ -88,7 +82,7 @@ fun HandwritingInputDialog(
             )
         },
         confirmButton = {
-            TextButton(onClick = { onConfirm(text) }) { Text("Write") }
+            Button(onClick = { onConfirm(text) }) { Text("Write") }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancel") }
@@ -105,13 +99,15 @@ fun rememberGlyphs(): Map<Char, Bitmap> {
         withContext(Dispatchers.IO) {
             val map = mutableMapOf<Char, Bitmap>()
             try {
-                // Assuming lowercase a-z pngs are in assets/glyphs/
+                // Iterates a-z to find matching bitmaps in app/src/main/assets/glyphs/
                 ('a'..'z').forEach { char ->
                     context.assets.open("glyphs/$char.png").use { stream ->
                         map[char] = BitmapFactory.decodeStream(stream)
                     }
                 }
-            } catch (e: Exception) { e.printStackTrace() }
+            } catch (e: Exception) { 
+                e.printStackTrace() 
+            }
             glyphMap = map
         }
     }
@@ -127,13 +123,13 @@ fun PaperView(text: String, glyphMap: Map<Char, Bitmap>) {
         // Notebook Aesthetics
         val lineBlue = Color(0xFFADCEEB)
         val marginRed = Color(0xFFFFB3B3)
-        val horizontalMargin = 100f
+        val horizontalMargin = 110f
         val lineSpacing = 65f
         val headerSpace = 220f
         val letterSpacing = 4f
         val wordSpacing = 24f
 
-        // 1. Draw Background Lines
+        // 1. Draw Paper Background
         drawLine(marginRed, Offset(horizontalMargin, 0f), Offset(horizontalMargin, height), 3f)
         var yPos = headerSpace
         while (yPos < height) {
@@ -142,13 +138,13 @@ fun PaperView(text: String, glyphMap: Map<Char, Bitmap>) {
         }
 
         // 2. Render Bitmap Glyphs
-        var currentX = horizontalMargin + 20f
-        var currentY = headerSpace - 55f // Baseline adjustment
+        var currentX = horizontalMargin + 25f
+        var currentY = headerSpace - 55f // Aligns bitmap to sit on the blue line
 
         text.forEach { char ->
             when (char) {
                 '\n' -> {
-                    currentX = horizontalMargin + 20f
+                    currentX = horizontalMargin + 25f
                     currentY += lineSpacing
                 }
                 ' ' -> currentX += wordSpacing
@@ -156,10 +152,14 @@ fun PaperView(text: String, glyphMap: Map<Char, Bitmap>) {
                     val bitmap = glyphMap[char]
                     if (bitmap != null) {
                         val glyphW = bitmap.width.toFloat()
+                        
+                        // Wrap text at the right margin
                         if (currentX + glyphW > width - 40f) {
-                            currentX = horizontalMargin + 20f
+                            currentX = horizontalMargin + 25f
                             currentY += lineSpacing
                         }
+                        
+                        // Prevent drawing if we exceed the bottom of the page
                         if (currentY < height) {
                             drawImage(
                                 image = bitmap.asImageBitmap(),
@@ -167,6 +167,9 @@ fun PaperView(text: String, glyphMap: Map<Char, Bitmap>) {
                             )
                             currentX += glyphW + letterSpacing
                         }
+                    } else {
+                        // Fallback for missing glyphs: simple space
+                        currentX += 15f
                     }
                 }
             }
