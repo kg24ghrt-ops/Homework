@@ -18,15 +18,17 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import dagger.hilt.android.AndroidEntryPoint
 import java.io.File
 import java.io.FileOutputStream
+import kotlin.random.Random
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -40,17 +42,6 @@ class MainActivity : ComponentActivity() {
             val glyphMap = remember { mutableStateMapOf<Char, Bitmap>() }
             val context = LocalContext.current
 
-            // Load saved font on startup
-            LaunchedEffect(Unit) {
-                val folder = File(context.filesDir, "auto_font")
-                if (folder.exists()) {
-                    folder.listFiles()?.forEach { file ->
-                        val char = file.nameWithoutExtension.firstOrNull()
-                        if (char != null) glyphMap[char] = BitmapFactory.decodeFile(file.absolutePath)
-                    }
-                }
-            }
-
             // Launcher for the SINGLE alphabet sheet
             val sheetLauncher = rememberLauncherForActivityResult(
                 contract = ActivityResultContracts.GetContent()
@@ -59,7 +50,6 @@ class MainActivity : ComponentActivity() {
                     val inputStream = context.contentResolver.openInputStream(it)
                     val fullSheet = BitmapFactory.decodeStream(inputStream)
                     if (fullSheet != null) {
-                        // Automatically slice the sheet into 26 letters
                         processAlphabetSheet(context, fullSheet, glyphMap)
                     }
                 }
@@ -72,18 +62,18 @@ class MainActivity : ComponentActivity() {
                         Column(horizontalAlignment = Alignment.End) {
                             ExtendedFloatingActionButton(
                                 text = { Text("UPLOAD SHEET") },
-                                icon = { Text("📄") },
                                 onClick = { sheetLauncher.launch("image/*") }
                             )
                             Spacer(modifier = Modifier.height(12.dp))
                             FloatingActionButton(onClick = { showTextDialog = true }) {
-                                Text("EDIT", modifier = Modifier.padding(horizontal = 16.dp))
+                                Text("EDIT")
                             }
                         }
                     }
                 ) { innerPadding ->
                     Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
                         PaperView(text = noteText, glyphMap = glyphMap)
+                        
                         if (showTextDialog) {
                             HandwritingInputDialog(noteText, { showTextDialog = false }, { noteText = it; showTextDialog = false })
                         }
@@ -95,38 +85,8 @@ class MainActivity : ComponentActivity() {
 }
 
 /**
- * Slices one image into 26 blocks and removes background
+ * Enhanced Background Removal: It keeps the ink texture but removes the paper grayness.
  */
-fun processAlphabetSheet(context: android.content.Context, sheet: Bitmap, glyphMap: MutableMap<Char, Bitmap>) {
-    val cleanSheet = removeBackground(sheet)
-    
-    // We assume 3 rows and 9-10 letters per row based on your photo
-    val rows = 3
-    val cols = 10 
-    val cellWidth = cleanSheet.width / cols
-    val cellHeight = cleanSheet.height / rows
-    
-    val alphabet = "abcdefghijklmnopqrstuvwxyz"
-    var charIndex = 0
-
-    for (r in 0 until rows) {
-        for (c in 0 until cols) {
-            if (charIndex >= alphabet.length) break
-            
-            val char = alphabet[charIndex]
-            val x = c * cellWidth
-            val y = r * cellHeight
-            
-            // Create a small bitmap for this specific letter
-            val letterBitmap = Bitmap.createBitmap(cleanSheet, x, y, cellWidth, cellHeight)
-            
-            glyphMap[char] = letterBitmap
-            saveToDisk(context, char, letterBitmap)
-            charIndex++
-        }
-    }
-}
-
 fun removeBackground(source: Bitmap): Bitmap {
     val width = source.width
     val height = source.height
@@ -139,8 +99,10 @@ fun removeBackground(source: Bitmap): Bitmap {
         val r = AndroidColor.red(color)
         val g = AndroidColor.green(color)
         val b = AndroidColor.blue(color)
-        // Remove white background (RGB > 180)
-        if (r > 180 && g > 180 && b > 180) {
+
+        // Using a higher threshold and calculating luminance to keep the red ink details
+        val luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b).toInt()
+        if (luminance > 150) {
             pixels[i] = AndroidColor.TRANSPARENT
         }
     }
@@ -148,51 +110,96 @@ fun removeBackground(source: Bitmap): Bitmap {
     return newBitmap
 }
 
-fun saveToDisk(context: android.content.Context, char: Char, bitmap: Bitmap) {
-    val folder = File(context.filesDir, "auto_font")
-    if (!folder.exists()) folder.mkdirs()
-    FileOutputStream(File(folder, "$char.png")).use { out ->
-        bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+fun processAlphabetSheet(context: android.content.Context, sheet: Bitmap, glyphMap: MutableMap<Char, Bitmap>) {
+    val cleanSheet = removeBackground(sheet)
+    val rows = 3
+    val cols = 10 
+    val cellW = cleanSheet.width / cols
+    val cellH = cleanSheet.height / rows
+    val alphabet = "abcdefghijklmnopqrstuvwxyz"
+    var charIndex = 0
+
+    for (r in 0 until rows) {
+        for (c in 0 until cols) {
+            if (charIndex >= alphabet.length) break
+            val char = alphabet[charIndex]
+            val letterBitmap = Bitmap.createBitmap(cleanSheet, c * cellW, r * cellH, cellW, cellH)
+            glyphMap[char.lowercaseChar()] = letterBitmap
+            glyphMap[char.uppercaseChar()] = letterBitmap
+            charIndex++
+        }
     }
 }
 
 @Composable
 fun PaperView(text: String, glyphMap: Map<Char, Bitmap>) {
-    Canvas(modifier = Modifier.fillMaxSize().background(Color.White)) {
-        val lineBlue = Color(0xFFADCEEB)
+    // We use a "warm white" to simulate real paper
+    val paperColor = Color(0xFFF9F6F0) 
+
+    Canvas(modifier = Modifier.fillMaxSize().background(paperColor)) {
+        drawNotebookLines()
+        drawPaperWrinkles() // Adds the "imperfect" look
+
+        var curX = 130f
+        var curY = 165f
         val lineSpacing = 65f
-        val headerSpace = 220f
-        val marginX = 110f
-
-        for (i in 0..size.height.toInt() step lineSpacing.toInt()) {
-            val y = headerSpace + i
-            drawLine(lineBlue, Offset(0f, y), Offset(size.width, y), 2f)
-        }
-
-        var curX = marginX + 20f
-        var curY = headerSpace - 55f 
 
         text.forEach { char ->
-            val cleanChar = char.lowercaseChar()
-            val bitmap = glyphMap[cleanChar]
+            val bitmap = glyphMap[char]
             if (bitmap != null) {
-                val targetH = 55f 
+                val targetH = 50f
                 val scale = targetH / bitmap.height
                 val finalW = bitmap.width * scale
 
                 if (curX + finalW > size.width - 40f) {
-                    curX = marginX + 20f
+                    curX = 130f
                     curY += lineSpacing
                 }
 
+                // DRAWING WITH BLEND MODE: This makes the ink look like it's ON the paper
                 drawImage(
                     image = bitmap.asImageBitmap(),
                     dstOffset = IntOffset(curX.toInt(), curY.toInt()),
-                    dstSize = IntSize(finalW.toInt(), targetH.toInt())
+                    dstSize = IntSize(finalW.toInt(), targetH.toInt()),
+                    blendMode = BlendMode.Multiply, // Blends ink with paper texture
+                    alpha = 0.9f // Slight transparency for realism
                 )
-                curX += finalW + 5f
-            } else if (char == ' ') { curX += 45f }
+                curX += finalW + 4f
+            } else if (char == ' ') { curX += 40f }
         }
+    }
+}
+
+fun DrawScope.drawNotebookLines() {
+    val lineBlue = Color(0xFFADCEEB).copy(alpha = 0.6f)
+    val lineSpacing = 65f
+    val headerSpace = 220f
+    
+    for (i in 0..size.height.toInt() step lineSpacing.toInt()) {
+        val y = headerSpace + i
+        drawLine(lineBlue, Offset(0f, y), Offset(size.width, y), 1.5f)
+    }
+    // Vertical red margin line
+    drawLine(Color(0xFFFFB3B3), Offset(110f, 0f), Offset(110f, size.height), 2f)
+}
+
+/**
+ * Adds subtle shadows and highlights to simulate paper wrinkles
+ */
+fun DrawScope.drawPaperWrinkles() {
+    val random = Random(42) // Fixed seed so wrinkles don't move
+    for (i in 0..5) {
+        val startX = random.nextFloat() * size.width
+        val startY = random.nextFloat() * size.height
+        val endX = startX + (random.nextFloat() - 0.5f) * 400f
+        val endY = startY + (random.nextFloat() - 0.5f) * 400f
+        
+        drawLine(
+            color = Color.Black.copy(alpha = 0.03f),
+            start = Offset(startX, startY),
+            end = Offset(endX, endY),
+            strokeWidth = 40f
+        )
     }
 }
 
@@ -201,8 +208,8 @@ fun HandwritingInputDialog(initial: String, onDismiss: () -> Unit, onConfirm: (S
     var text by remember { mutableStateOf(initial) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Write Note") },
-        text = { TextField(value = text, onValueChange = { text = it }) },
-        confirmButton = { Button(onClick = { onConfirm(text) }) { Text("Write") } }
+        confirmButton = { Button(onClick = { onConfirm(text) }) { Text("Write") } },
+        title = { Text("Type your note") },
+        text = { TextField(value = text, onValueChange = { text = it }) }
     )
 }
