@@ -22,15 +22,14 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.platform.LocalContext // FIXED: Added this import
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import dagger.hilt.android.AndroidEntryPoint
 import java.io.File
 import java.io.FileOutputStream
 import kotlin.random.Random
 
-@AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -60,8 +59,10 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     floatingActionButton = {
                         Column(horizontalAlignment = Alignment.End) {
+                            // FIXED: Corrected the ExtendedFloatingActionButton parameters
                             ExtendedFloatingActionButton(
                                 text = { Text("UPLOAD SHEET") },
+                                icon = { Text("📄") }, 
                                 onClick = { sheetLauncher.launch("image/*") }
                             )
                             Spacer(modifier = Modifier.height(12.dp))
@@ -75,7 +76,11 @@ class MainActivity : ComponentActivity() {
                         PaperView(text = noteText, glyphMap = glyphMap)
                         
                         if (showTextDialog) {
-                            HandwritingInputDialog(noteText, { showTextDialog = false }, { noteText = it; showTextDialog = false })
+                            HandwritingInputDialog(
+                                initial = noteText, 
+                                onDismiss = { showTextDialog = false }, 
+                                onConfirm = { noteText = it; showTextDialog = false }
+                            )
                         }
                     }
                 }
@@ -84,9 +89,6 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-/**
- * Enhanced Background Removal: It keeps the ink texture but removes the paper grayness.
- */
 fun removeBackground(source: Bitmap): Bitmap {
     val width = source.width
     val height = source.height
@@ -99,12 +101,8 @@ fun removeBackground(source: Bitmap): Bitmap {
         val r = AndroidColor.red(color)
         val g = AndroidColor.green(color)
         val b = AndroidColor.blue(color)
-
-        // Using a higher threshold and calculating luminance to keep the red ink details
-        val luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b).toInt()
-        if (luminance > 150) {
-            pixels[i] = AndroidColor.TRANSPARENT
-        }
+        val luminance = (0.21 * r + 0.72 * g + 0.07 * b).toInt()
+        if (luminance > 160) { pixels[i] = AndroidColor.TRANSPARENT }
     }
     newBitmap.setPixels(pixels, 0, width, 0, 0, width, height)
     return newBitmap
@@ -133,12 +131,11 @@ fun processAlphabetSheet(context: android.content.Context, sheet: Bitmap, glyphM
 
 @Composable
 fun PaperView(text: String, glyphMap: Map<Char, Bitmap>) {
-    // We use a "warm white" to simulate real paper
     val paperColor = Color(0xFFF9F6F0) 
 
     Canvas(modifier = Modifier.fillMaxSize().background(paperColor)) {
         drawNotebookLines()
-        drawPaperWrinkles() // Adds the "imperfect" look
+        drawPaperWrinkles()
 
         var curX = 130f
         var curY = 165f
@@ -156,16 +153,15 @@ fun PaperView(text: String, glyphMap: Map<Char, Bitmap>) {
                     curY += lineSpacing
                 }
 
-                // DRAWING WITH BLEND MODE: This makes the ink look like it's ON the paper
                 drawImage(
                     image = bitmap.asImageBitmap(),
                     dstOffset = IntOffset(curX.toInt(), curY.toInt()),
                     dstSize = IntSize(finalW.toInt(), targetH.toInt()),
-                    blendMode = BlendMode.Multiply, // Blends ink with paper texture
-                    alpha = 0.9f // Slight transparency for realism
+                    blendMode = BlendMode.Multiply,
+                    alpha = 0.9f
                 )
                 curX += finalW + 4f
-            } else if (char == ' ') { curX += 40f }
+            } else if (char == ' ') { curX += 45f }
         }
     }
 }
@@ -174,30 +170,22 @@ fun DrawScope.drawNotebookLines() {
     val lineBlue = Color(0xFFADCEEB).copy(alpha = 0.6f)
     val lineSpacing = 65f
     val headerSpace = 220f
-    
     for (i in 0..size.height.toInt() step lineSpacing.toInt()) {
         val y = headerSpace + i
         drawLine(lineBlue, Offset(0f, y), Offset(size.width, y), 1.5f)
     }
-    // Vertical red margin line
     drawLine(Color(0xFFFFB3B3), Offset(110f, 0f), Offset(110f, size.height), 2f)
 }
 
-/**
- * Adds subtle shadows and highlights to simulate paper wrinkles
- */
 fun DrawScope.drawPaperWrinkles() {
-    val random = Random(42) // Fixed seed so wrinkles don't move
+    val random = Random(42) 
     for (i in 0..5) {
         val startX = random.nextFloat() * size.width
         val startY = random.nextFloat() * size.height
-        val endX = startX + (random.nextFloat() - 0.5f) * 400f
-        val endY = startY + (random.nextFloat() - 0.5f) * 400f
-        
         drawLine(
             color = Color.Black.copy(alpha = 0.03f),
             start = Offset(startX, startY),
-            end = Offset(endX, endY),
+            end = Offset(startX + 300f, startY + 200f),
             strokeWidth = 40f
         )
     }
