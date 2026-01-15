@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.ui.res.painterResource
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -486,10 +487,10 @@ fun RealisticPaperView(
                     .padding(16.dp),
                 containerColor = Color(0xFF0A84FF)
             ) {
-                Icon(
-                    imageVector = Icons.Default.Download,
-                    contentDescription = "Save as PNG",
-                    tint = Color.White
+                Text(
+                    text = "💾",
+                    fontSize = 24.sp,
+                    color = Color.White
                 )
             }
         }
