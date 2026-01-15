@@ -20,6 +20,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.DrawScope // FIXED: Added missing import
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.IntOffset
@@ -72,7 +73,7 @@ class MainActivity : ComponentActivity() {
                             Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(0.4f)), contentAlignment = Alignment.Center) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     CircularProgressIndicator(progress = progress, color = Color.White)
-                                    Text("Processing: ${(progress * 100).toInt()}%", color = Color.White)
+                                    Text("Scanning: ${(progress * 100).toInt()}%", color = Color.White)
                                 }
                             }
                         }
@@ -91,7 +92,6 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// ... [Keep processWithPixelScan, findInkClusters, and extractAndClean from previous version] ...
 suspend fun processWithPixelScan(sheet: Bitmap, glyphMap: MutableMap<Char, Bitmap>, onProgress: (Float) -> Unit) = withContext(Dispatchers.Default) {
     val alphabet = "abcdefghijklmnopqrstuvwxyz"
     val rows = 3; val cols = 10
@@ -140,20 +140,20 @@ fun extractAndClean(source: Bitmap, rect: Rect): Bitmap {
 @Composable
 fun PaperView(text: String, glyphMap: Map<Char, Bitmap>) {
     val paint = android.graphics.Paint().apply {
-        color = AndroidColor.GRAY
-        textSize = 55f // INCREASED SIZE
+        color = AndroidColor.LTGRAY
+        textSize = 55f 
         typeface = android.graphics.Typeface.SERIF
-        alpha = 140
+        alpha = 100
     }
 
     Canvas(modifier = Modifier.fillMaxSize().background(Color(0xFFF9F7F2))) {
         drawNotebookLines()
-        drawRealisticNoise() // NEW: Adds wrinkles and paper grain
+        drawRealisticNoise() 
 
         var curX = 135f
-        var curY = 160f // Adjusted start height
+        var curY = 160f 
         val lineSpacing = 65f
-        val letterHeight = 60f // INCREASED HEIGHT to match lines
+        val letterHeight = 65f // Matches blue line height
 
         text.forEach { char ->
             val bmp = glyphMap[char]
@@ -163,8 +163,8 @@ fun PaperView(text: String, glyphMap: Map<Char, Bitmap>) {
                 
                 if (curX + w > size.width - 40f) { curX = 135f; curY += lineSpacing }
 
-                // Added small random rotation for "natural" look
                 drawContext.canvas.nativeCanvas.save()
+                // Random jitter for more natural look
                 drawContext.canvas.nativeCanvas.rotate(Random.nextFloat() * 2f - 1f, curX, curY)
                 
                 drawImage(
@@ -172,7 +172,7 @@ fun PaperView(text: String, glyphMap: Map<Char, Bitmap>) {
                     IntOffset(curX.toInt(), curY.toInt()),
                     IntSize(w.toInt(), letterHeight.toInt()),
                     blendMode = BlendMode.Multiply,
-                    alpha = 0.92f
+                    alpha = 0.95f
                 )
                 drawContext.canvas.nativeCanvas.restore()
                 curX += w + 2f
@@ -188,32 +188,34 @@ fun PaperView(text: String, glyphMap: Map<Char, Bitmap>) {
     }
 }
 
+// FIXED: Syntax errors in DrawScope extension functions
 fun DrawScope.drawNotebookLines() {
     val blueLines = Color(0xFFADCEEB).copy(0.35f)
     for (i in 0..size.height.toInt() step 65) {
-        drawLine(blueLines, Offset(0f, 220f + i), Offset(size.width, 220f + i), 2f)
+        val y = 220f + i
+        drawLine(blueLines, Offset(0f, y), Offset(size.width, y), 2f)
     }
     drawLine(Color(0xFFFFB3B3).copy(0.5f), Offset(115f, 0f), Offset(115f, size.height), 3f)
 }
 
 fun DrawScope.drawRealisticNoise() {
-    val random = Random(System.currentTimeMillis())
-    // Large "Wrinkles"
-    for (i in 0..5) {
+    val random = Random(42) // Fixed seed so wrinkles don't jump around
+    // Realistic soft shadows for wrinkles
+    for (i in 0..8) {
         val startX = random.nextFloat() * size.width
         val startY = random.nextFloat() * size.height
         drawLine(
-            color = Color.Black.copy(alpha = 0.03f),
+            color = Color.Black.copy(alpha = 0.035f),
             start = Offset(startX, startY),
-            end = Offset(startX + 600f, startY + 200f),
-            strokeWidth = 80f
+            end = Offset(startX + 800f, startY + 300f),
+            strokeWidth = 120f
         )
     }
-    // Fine Paper Grain/Noise
-    for (i in 0..50) {
+    // Subtle paper grain
+    for (i in 0..100) {
         drawCircle(
-            color = Color.Black.copy(alpha = 0.02f),
-            radius = random.nextFloat() * 5f,
+            color = Color.Black.copy(alpha = 0.015f),
+            radius = random.nextFloat() * 4f,
             center = Offset(random.nextFloat() * size.width, random.nextFloat() * size.height)
         )
     }
