@@ -1,8 +1,14 @@
 package com.example.cahier
 
 import android.content.ContentValues
-import android.graphics.*
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas as AndroidCanvas
+import android.graphics.Matrix
+import android.graphics.Paint as AndroidPaint // Aliased to avoid conflict
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffColorFilter
+import android.graphics.RectF
 import android.os.Bundle
 import android.os.Environment
 import android.provider.MediaStore
@@ -17,9 +23,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.*
@@ -33,7 +39,7 @@ const val LINE_SPACING = 140f
 const val FONT_SIZE = 95f
 const val PAGE_WIDTH = 1080
 const val PAGE_HEIGHT = 1920
-const val MAX_Y = PAGE_HEIGHT - 150f // Leave bottom margin
+const val MAX_Y = PAGE_HEIGHT - 150f 
 
 data class Glyph(val bitmap: Bitmap, val baselineOffset: Float)
 data class LayoutResult(val x: Float, val y: Float, val currentFontSize: Float)
@@ -77,7 +83,7 @@ class MainActivity : ComponentActivity() {
                             }
                             Toast.makeText(context, "Saved ${pages.size} pages!", Toast.LENGTH_SHORT).show()
                         }
-                    }) { Text("Export All Pages") }
+                    }) { Text("Export All") }
                 }
                 Box(Modifier.weight(1f)) { HandwritingPage(typedText, glyphMap, cursorVisible) }
             }
@@ -85,10 +91,6 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-/**
- * FEATURE: MULTI-PAGE EXPORT
- * Splits text into chunks that fit on individual bitmaps.
- */
 suspend fun generatePages(text: String, glyphMap: Map<String, Glyph>): List<Bitmap> = withContext(Dispatchers.Default) {
     val pages = mutableListOf<Bitmap>()
     val tokens = tokenizeMyanmar(text)
@@ -97,21 +99,19 @@ suspend fun generatePages(text: String, glyphMap: Map<String, Glyph>): List<Bitm
     while (remainingTokens.isNotEmpty()) {
         val bitmap = Bitmap.createBitmap(PAGE_WIDTH, PAGE_HEIGHT, Bitmap.Config.ARGB_8888)
         val canvas = AndroidCanvas(bitmap)
-        canvas.drawColor(AndroidColor.rgb(255, 252, 242)) // Paper tint
+        canvas.drawColor(AndroidColor.rgb(255, 252, 242)) 
         
-        // Render and find out how many tokens were actually consumed
         val (consumedCount, _) = renderTextChunk(canvas, remainingTokens, glyphMap, PAGE_WIDTH.toFloat(), isExport = true)
         
         pages.add(bitmap)
         remainingTokens = remainingTokens.drop(consumedCount)
-        if (consumedCount == 0) break // Prevent infinite loop on single giant token
+        if (consumedCount == 0) break 
     }
     pages
 }
 
 /**
- * FEATURE: LINE SQUEEZE & INK PRESSURE
- * Returns (tokensConsumed, finalLayout)
+ * FIXED: Explicitly using android.graphics.Paint and Matrix
  */
 fun renderTextChunk(
     canvas: AndroidCanvas,
@@ -123,50 +123,46 @@ fun renderTextChunk(
     var xPos = START_X
     var yPos = START_Y
     var tokensConsumed = 0
-    val paint = Paint().apply { isAntiAlias = true; isFilterBitmap = true }
+    val nativePaint = AndroidPaint().apply { 
+        isAntiAlias = true
+        isFilterBitmap = true 
+    }
 
     for (token in tokens) {
         val glyph = glyphMap[token]
         if (glyph != null) {
-            // 1. RANDOM INK VARIATION (mimics pressure)
-            val pressure = Random.nextInt(-15, 15)
-            val colorFilter = PorterDuffColorFilter(
-                AndroidColor.rgb(35 + pressure, 65 + pressure, 160 + pressure), 
+            // Ink variation
+            val p = Random.nextInt(-12, 12)
+            nativePaint.colorFilter = PorterDuffColorFilter(
+                AndroidColor.rgb(35 + p, 65 + p, 160 + p), 
                 PorterDuff.Mode.SRC_ATOP
             )
-            paint.colorFilter = colorFilter
 
-            // 2. LINE SQUEEZE LOGIC
-            var scaleAdjust = 1.0f
             val baseScale = FONT_SIZE / glyph.bitmap.height
+            var scaleAdjust = 1.0f
             val estimatedW = glyph.bitmap.width * baseScale
             
-            // If the token is too wide for the line, squeeze it slightly
             if (xPos + estimatedW > canvasWidth - 50f) {
-                if (xPos > START_X + 200f) { // If not at start of line, wrap
+                if (xPos > START_X + 200f) {
                     xPos = START_X
                     yPos += LINE_SPACING
-                } else { // If already at start, squeeze to fit margin
-                    scaleAdjust = 0.85f 
+                } else {
+                    scaleAdjust = 0.82f 
                 }
             }
 
-            // Page Break Check
             if (yPos > MAX_Y && isExport) break
 
-            val randomRot = Random.nextFloat() * 3f - 1.5f
-            val jitterY = Random.nextFloat() * 4f - 2f
             val finalScale = baseScale * scaleAdjust
             val w = glyph.bitmap.width * finalScale
-            val top = (yPos + jitterY) - (glyph.bitmap.height * finalScale) + (glyph.baselineOffset * finalScale)
+            val top = (yPos + (Random.nextFloat() * 4f - 2f)) - (glyph.bitmap.height * finalScale) + (glyph.baselineOffset * finalScale)
 
-            val matrix = Matrix().apply {
-                postScale(finalScale, finalScale)
-                postRotate(randomRot, w / 2, FONT_SIZE / 2)
-                postTranslate(xPos, top)
-            }
+            val matrix = Matrix()
+            matrix.postScale(finalScale, finalScale)
+            matrix.postRotate(Random.nextFloat() * 3f - 1.5f, w / 2, FONT_SIZE / 2)
+            matrix.postTranslate(xPos, top)
 
-            canvas.drawBitmap(glyph.bitmap, matrix, paint)
+            canvas.drawBitmap(glyph.bitmap, matrix, nativePaint)
             xPos += w + 2f
         } else if (token == " ") {
             xPos += 45f
@@ -193,10 +189,7 @@ fun HandwritingPage(text: String, glyphMap: Map<String, Glyph>, cursorVisible: B
     }
 }
 
-// --- Support Functions (Tokenize, Scan, Save) remain robust ---
-
 fun tokenizeMyanmar(text: String): List<String> {
-    // Regex for Myanmar Grapheme Clusters
     val regex = Regex("[\u1000-\u1021](?:\u1039[\u1000-\u1021])?[\u102B-\u103E]*|.")
     return regex.findAll(text).map { it.value }.toList()
 }
