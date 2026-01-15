@@ -2,9 +2,12 @@ package com.example.cahier
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -19,8 +22,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import dagger.hilt.android.AndroidEntryPoint
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -30,29 +31,51 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             var noteText by remember { mutableStateOf("") }
-            var showDialog by remember { mutableStateOf(false) }
-            val glyphs = rememberGlyphs()
+            var showInputByTyping by remember { mutableStateOf(false) }
+            
+            // This holds the handwriting glyphs in memory
+            val customGlyphs = remember { mutableStateMapOf<Char, Bitmap>() }
+            val context = LocalContext.current
+
+            // Launcher for picking a PNG from the gallery
+            val launcher = rememberLauncherForActivityResult(
+                contract = ActivityResultContracts.GetContent()
+            ) { uri: Uri? ->
+                uri?.let {
+                    val inputStream = context.contentResolver.openInputStream(it)
+                    val bitmap = BitmapFactory.decodeStream(inputStream)
+                    // For now, let's map it to 'a'. In a full app, you'd pick the letter.
+                    customGlyphs['a'] = bitmap 
+                }
+            }
 
             MaterialTheme(colorScheme = lightColorScheme()) {
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
                     floatingActionButton = {
-                        // Using a simple Text label to avoid missing icon library errors
-                        FloatingActionButton(onClick = { showDialog = true }) {
-                            Text("EDIT", modifier = Modifier.padding(horizontal = 16.dp))
+                        Column {
+                            // Button to Add your Handwriting (PNG)
+                            SmallFloatingActionButton(onClick = { launcher.launch("image/png") }) {
+                                Text("PNG")
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            // Button to Type
+                            FloatingActionButton(onClick = { showInputByTyping = true }) {
+                                Text("EDIT")
+                            }
                         }
                     }
                 ) { innerPadding ->
                     Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
-                        PaperView(text = noteText, glyphMap = glyphs)
+                        PaperView(text = noteText, glyphMap = customGlyphs)
 
-                        if (showDialog) {
+                        if (showInputByTyping) {
                             HandwritingInputDialog(
                                 initialText = noteText,
-                                onDismiss = { showDialog = false },
+                                onDismiss = { showInputByTyping = false },
                                 onConfirm = { 
                                     noteText = it.lowercase() 
-                                    showDialog = false
+                                    showInputByTyping = false
                                 }
                             )
                         }
@@ -64,115 +87,49 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun HandwritingInputDialog(
-    initialText: String,
-    onDismiss: () -> Unit,
-    onConfirm: (String) -> Unit
-) {
-    var text by remember { mutableStateOf(initialText) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Enter Text (a-z)") },
-        text = {
-            TextField(
-                value = text,
-                onValueChange = { text = it },
-                modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("Type or paste here...") }
-            )
-        },
-        confirmButton = {
-            Button(onClick = { onConfirm(text) }) { Text("Write") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        }
-    )
-}
-
-@Composable
-fun rememberGlyphs(): Map<Char, Bitmap> {
-    val context = LocalContext.current
-    var glyphMap by remember { mutableStateOf<Map<Char, Bitmap>>(emptyMap()) }
-
-    LaunchedEffect(Unit) {
-        withContext(Dispatchers.IO) {
-            val map = mutableMapOf<Char, Bitmap>()
-            try {
-                // Iterates a-z to find matching bitmaps in app/src/main/assets/glyphs/
-                ('a'..'z').forEach { char ->
-                    context.assets.open("glyphs/$char.png").use { stream ->
-                        map[char] = BitmapFactory.decodeStream(stream)
-                    }
-                }
-            } catch (e: Exception) { 
-                e.printStackTrace() 
-            }
-            glyphMap = map
-        }
-    }
-    return glyphMap
-}
-
-@Composable
 fun PaperView(text: String, glyphMap: Map<Char, Bitmap>) {
     Canvas(modifier = Modifier.fillMaxSize().background(Color.White)) {
         val width = size.width
         val height = size.height
         
-        // Notebook Aesthetics
         val lineBlue = Color(0xFFADCEEB)
-        val marginRed = Color(0xFFFFB3B3)
         val horizontalMargin = 110f
         val lineSpacing = 65f
         val headerSpace = 220f
-        val letterSpacing = 4f
-        val wordSpacing = 24f
 
-        // 1. Draw Paper Background
-        drawLine(marginRed, Offset(horizontalMargin, 0f), Offset(horizontalMargin, height), 3f)
+        // Draw Notebook Lines
         var yPos = headerSpace
         while (yPos < height) {
             drawLine(lineBlue, Offset(0f, yPos), Offset(width, yPos), 2f)
             yPos += lineSpacing
         }
 
-        // 2. Render Bitmap Glyphs
+        // Render Handwriting
         var currentX = horizontalMargin + 25f
-        var currentY = headerSpace - 55f // Aligns bitmap to sit on the blue line
+        var currentY = headerSpace - 60f 
 
         text.forEach { char ->
-            when (char) {
-                '\n' -> {
-                    currentX = horizontalMargin + 25f
-                    currentY += lineSpacing
-                }
-                ' ' -> currentX += wordSpacing
-                else -> {
-                    val bitmap = glyphMap[char]
-                    if (bitmap != null) {
-                        val glyphW = bitmap.width.toFloat()
-                        
-                        // Wrap text at the right margin
-                        if (currentX + glyphW > width - 40f) {
-                            currentX = horizontalMargin + 25f
-                            currentY += lineSpacing
-                        }
-                        
-                        // Prevent drawing if we exceed the bottom of the page
-                        if (currentY < height) {
-                            drawImage(
-                                image = bitmap.asImageBitmap(),
-                                dstOffset = IntOffset(currentX.toInt(), currentY.toInt())
-                            )
-                            currentX += glyphW + letterSpacing
-                        }
-                    } else {
-                        // Fallback for missing glyphs: simple space
-                        currentX += 15f
-                    }
-                }
+            val bitmap = glyphMap[char]
+            if (bitmap != null) {
+                drawImage(
+                    image = bitmap.asImageBitmap(),
+                    dstOffset = IntOffset(currentX.toInt(), currentY.toInt())
+                )
+                currentX += bitmap.width + 10f
+            } else if (char == ' ') {
+                currentX += 30f
             }
         }
     }
+}
+
+@Composable
+fun HandwritingInputDialog(initialText: String, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
+    var text by remember { mutableStateOf(initialText) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Enter Text") },
+        text = { TextField(value = text, onValueChange = { text = it }) },
+        confirmButton = { Button(onClick = { onConfirm(text) }) { Text("Write") } }
+    )
 }
