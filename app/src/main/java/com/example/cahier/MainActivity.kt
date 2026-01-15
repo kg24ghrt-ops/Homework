@@ -47,15 +47,13 @@ class MainActivity : ComponentActivity() {
                     scope.launch {
                         try {
                             val inputStream = context.contentResolver.openInputStream(it)
-                            // Memory Guard: Scale down large high-res photos to prevent app death
                             val options = BitmapFactory.Options().apply { inSampleSize = 2 }
                             val fullSheet = BitmapFactory.decodeStream(inputStream, null, options)
-                            
                             if (fullSheet != null) {
                                 traceAndSaveAlphabet(fullSheet, glyphMap)
                             }
                         } catch (e: Exception) {
-                            // Silently catch memory errors
+                            // Memory safety
                         } finally {
                             isProcessing = false
                         }
@@ -66,13 +64,12 @@ class MainActivity : ComponentActivity() {
             MaterialTheme {
                 Scaffold { padding ->
                     Box(modifier = Modifier.padding(padding).fillMaxSize()) {
-                        // Drawing the paper and the traced strokes
                         PaperView(text = noteText, glyphMap = glyphMap)
 
                         Column(modifier = Modifier.align(Alignment.BottomCenter).padding(20.dp)) {
                             if (isProcessing) {
                                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                                Text("Tracing ink flow...", color = Color.Gray, modifier = Modifier.padding(top = 8.dp))
+                                Text("Tracing ink flow...", color = Color.DarkGray, modifier = Modifier.padding(top = 8.dp))
                             } else {
                                 TextField(
                                     value = noteText,
@@ -93,9 +90,6 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-/**
- * AUTOMATIC RECOGNITION: Maps uppercase and lowercase based on grid position.
- */
 suspend fun traceAndSaveAlphabet(sheet: Bitmap, glyphMap: MutableMap<Char, Bitmap>) = withContext(Dispatchers.Default) {
     val alphabet = "abcdefghijklmnopqrstuvwxyz"
     val cellW = sheet.width / 10
@@ -111,7 +105,6 @@ suspend fun traceAndSaveAlphabet(sheet: Bitmap, glyphMap: MutableMap<Char, Bitma
         val strokes = findStrokes(cell)
         
         if (strokes.size >= 2) {
-            // Automatically assigns based on your sheet layout
             glyphMap[alphabet[i].uppercaseChar()] = renderInkOverlay(cell, strokes[0])
             glyphMap[alphabet[i].lowercaseChar()] = renderInkOverlay(cell, strokes[1])
         } else if (strokes.isNotEmpty()) {
@@ -129,10 +122,11 @@ fun findStrokes(cell: Bitmap): List<Rect> {
         var hasInk = false
         for (y in 0 until cell.height) {
             val p = cell.getPixel(x, y)
-            // Detection: Specifically looking for your Red/Dark pen against paper
-            if (AndroidColor.red(p) > 100 && AndroidColor.green(p) < 160) {
-                hasInk = true; break
-            }
+            val r = AndroidColor.red(p)
+            val g = AndroidColor.green(p)
+            val b = AndroidColor.blue(p)
+            // SENSITIVITY FIX: Detects red ink even in shadows
+            if (r > g + 20 && r > b + 20) { hasInk = true; break }
         }
         if (hasInk && !inStroke) { startX = x; inStroke = true }
         else if (!hasInk && inStroke) { 
@@ -143,9 +137,6 @@ fun findStrokes(cell: Bitmap): List<Rect> {
     return clusters
 }
 
-/**
- * INK BLEED RENDERER: Removes the photo background and makes it look like real blue ink.
- */
 fun renderInkOverlay(source: Bitmap, rect: Rect): Bitmap {
     val result = Bitmap.createBitmap(rect.width(), source.height, Bitmap.Config.ARGB_8888)
     for (x in 0 until rect.width()) {
@@ -153,12 +144,13 @@ fun renderInkOverlay(source: Bitmap, rect: Rect): Bitmap {
             val p = source.getPixel(rect.left + x, y)
             val r = AndroidColor.red(p)
             val g = AndroidColor.green(p)
-            
-            // Extract only the stroke
-            if (r > 90 && r > g + 15) {
-                val alpha = (255 - r).coerceIn(120, 255)
-                // Royal Blue Ink with transparency for "Bleed" effect
-                result.setPixel(x, y, AndroidColor.argb(alpha, 10, 40, 150))
+            val b = AndroidColor.blue(p)
+
+            // Tracing Logic: Capture the ink, delete the rest
+            if (r > g + 15 && r > b + 15) {
+                val intensity = (255 - r).coerceIn(100, 255)
+                // Real Blue Pen color
+                result.setPixel(x, y, AndroidColor.argb(255, 25, 55, 155))
             } else {
                 result.setPixel(x, y, AndroidColor.TRANSPARENT)
             }
@@ -172,54 +164,67 @@ fun PaperView(text: String, glyphMap: Map<Char, Bitmap>) {
     Canvas(modifier = Modifier.fillMaxSize()) {
         drawRealLifePaper()
 
-        var curX = 140f
-        var curY = 240f
-        val lineSpacing = 88f
-        val letterSize = 80f
+        var curX = 145f
+        var curY = 250f
+        val lineSpacing = 90f
+        val letterSize = 85f
 
         text.forEach { char ->
             val bmp = glyphMap[char]
             if (bmp != null) {
                 val scale = letterSize / bmp.height
                 val w = bmp.width * scale
-                if (curX + w > size.width - 50f) { curX = 140f; curY += lineSpacing }
+                if (curX + w > size.width - 60f) { curX = 145f; curY += lineSpacing }
 
-                // Slight rotation jitter for realism
-                rotate(degrees = Random.nextFloat() * 3f - 1.5f, pivot = Offset(curX, curY)) {
+                // Adding human "jitter" and "bounce"
+                val jitter = Random.nextFloat() * 4f - 2f
+                val bounce = Random.nextFloat() * 6f - 3f
+
+                rotate(degrees = jitter, pivot = Offset(curX, curY)) {
                     drawImage(
                         image = bmp.asImageBitmap(),
-                        dstOffset = IntOffset(curX.toInt(), (curY - letterSize + 12).toInt()),
+                        dstOffset = IntOffset(curX.toInt(), (curY - letterSize + 15 + bounce).toInt()),
                         dstSize = IntSize(w.toInt(), letterSize.toInt()),
-                        blendMode = BlendMode.Multiply // Essential: makes ink look "absorbed"
+                        blendMode = BlendMode.Multiply,
+                        alpha = 0.92f
                     )
                 }
                 curX += w + 6f
             } else if (char == ' ') { curX += 45f }
-            else if (char == '\n') { curX = 140f; curY += lineSpacing }
+            else if (char == '\n') { curX = 145f; curY += lineSpacing }
         }
     }
 }
 
 fun DrawScope.drawRealLifePaper() {
-    val random = Random(77)
-    // 1. Natural Paper Tone
-    drawRect(Color(0xFFFCF9F2))
+    val random = Random(88)
+    // 1. Warm "Off-White" base
+    drawRect(Color(0xFFFEF9F0))
 
-    // 2. Paper Grain & Texture
-    for (i in 0..800) {
+    // 2. Realistic Lighting (Vignette)
+    drawRect(
+        brush = Brush.radialGradient(
+            0.5f to Color.Transparent,
+            1.0f to Color.Black.copy(0.05f),
+            center = center,
+            radius = size.maxDimension
+        )
+    )
+
+    // 3. Paper Texture Fiber
+    for (i in 0..1000) {
         drawCircle(
-            color = Color.Black.copy(0.012f),
-            radius = random.nextFloat() * 1.8f,
+            color = Color.Black.copy(0.015f),
+            radius = random.nextFloat() * 2f,
             center = Offset(random.nextFloat() * size.width, random.nextFloat() * size.height)
         )
     }
 
-    // 3. Ink-Friendly Notebook Lines
-    val lineCol = Color(0xFF7B95B1).copy(0.25f)
-    for (i in 0..size.height.toInt() step 88) {
-        val y = 240f + i
+    // 4. Softened Lines
+    val lineCol = Color(0xFF8BA9C4).copy(0.3f)
+    for (i in 0..size.height.toInt() step 90) {
+        val y = 250f + i
         drawLine(lineCol, Offset(0f, y), Offset(size.width, y), 2.5f)
     }
-    // Margin Line
-    drawLine(Color(0xFFD69494).copy(0.4f), Offset(120f, 0f), Offset(120f, size.height), 4f)
+    drawLine(Color(0xFFEBBBBB).copy(0.5f), Offset(120f, 0f), Offset(120f, size.height), 3.5f)
 }
