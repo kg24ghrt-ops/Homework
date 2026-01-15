@@ -4,7 +4,6 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color as AndroidColor
 import android.graphics.Rect
-import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -28,7 +27,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import java.io.File
 import kotlin.random.Random
 
 class MainActivity : ComponentActivity() {
@@ -44,12 +42,12 @@ class MainActivity : ComponentActivity() {
 
             val sheetLauncher = rememberLauncherForActivityResult(
                 contract = ActivityResultContracts.GetContent()
-            ) { uri: Uri? ->
+            ) { uri ->
                 uri?.let {
                     val inputStream = context.contentResolver.openInputStream(it)
                     val fullSheet = BitmapFactory.decodeStream(inputStream)
                     if (fullSheet != null) {
-                        // NEW: Smarter slicing that finds the ink
+                        // Slices and then TIGHTLY crops each letter
                         processAlphabetSheetSmarter(fullSheet, glyphMap)
                     }
                 }
@@ -90,7 +88,7 @@ class MainActivity : ComponentActivity() {
 }
 
 /**
- * Smarter Slicing: Detects the bounds of the actual handwriting ink.
+ * Finds the actual ink in the cell and crops it perfectly to remove blocks.
  */
 fun processAlphabetSheetSmarter(sheet: Bitmap, glyphMap: MutableMap<Char, Bitmap>) {
     val rows = 3
@@ -104,108 +102,107 @@ fun processAlphabetSheetSmarter(sheet: Bitmap, glyphMap: MutableMap<Char, Bitmap
         for (c in 0 until cols) {
             if (charIndex >= alphabet.length) break
             
-            // Initial rough crop
+            // 1. Get the rough grid block
             val rawCell = Bitmap.createBitmap(sheet, c * cellW, r * cellH, cellW, cellH)
             
-            // Find actual ink boundaries within that cell
+            // 2. Find the ink bounds to remove the "box" around letters
             val bounds = findInkBounds(rawCell)
             if (bounds != null) {
-                val croppedLetter = Bitmap.createBitmap(rawCell, bounds.left, bounds.top, bounds.width(), bounds.height())
-                val cleanLetter = removeBackgroundPro(croppedLetter)
+                val cropped = Bitmap.createBitmap(rawCell, bounds.left, bounds.top, bounds.width(), bounds.height())
+                val clean = makeTransparent(cropped)
                 
-                glyphMap[alphabet[charIndex].lowercaseChar()] = cleanLetter
-                glyphMap[alphabet[charIndex].uppercaseChar()] = cleanLetter
+                glyphMap[alphabet[charIndex].lowercaseChar()] = clean
+                glyphMap[alphabet[charIndex].uppercaseChar()] = clean
             }
             charIndex++
         }
     }
 }
 
-/**
- * Finds the rectangle containing actual ink to prevent "blocky" spacing
- */
 fun findInkBounds(cell: Bitmap): Rect? {
     var minX = cell.width; var maxX = 0
     var minY = cell.height; var maxY = 0
-    var foundInk = false
+    var found = false
 
     for (y in 0 until cell.height) {
         for (x in 0 until cell.width) {
-            val color = cell.getPixel(x, y)
-            val r = AndroidColor.red(color)
-            val g = AndroidColor.green(color)
-            val b = AndroidColor.blue(color)
-            
-            // Detect non-white pixels (the ink)
-            if (r < 180 || g < 180 || b < 180) {
+            val p = cell.getPixel(x, y)
+            // If pixel is dark enough (ink), expand the crop box
+            if (AndroidColor.red(p) < 160 || AndroidColor.green(p) < 160) {
                 if (x < minX) minX = x; if (x > maxX) maxX = x
                 if (y < minY) minY = y; if (y > maxY) maxY = y
-                foundInk = true
+                found = true
             }
         }
     }
-    return if (foundInk) Rect(minX, minY, maxX, maxY) else null
+    // Add a tiny 2-pixel padding so it's not too tight
+    return if (found) Rect(
+        (minX - 2).coerceAtLeast(0), 
+        (minY - 2).coerceAtLeast(0), 
+        (maxX + 2).coerceAtMost(cell.width), 
+        (maxY + 2).coerceAtMost(cell.height)
+    ) else null
 }
 
-fun removeBackgroundPro(source: Bitmap): Bitmap {
-    val newBitmap = source.copy(Bitmap.Config.ARGB_8888, true)
-    for (y in 0 until newBitmap.height) {
-        for (x in 0 until newBitmap.width) {
-            val color = newBitmap.getPixel(x, y)
-            val r = AndroidColor.red(color); val g = AndroidColor.green(color); val b = AndroidColor.blue(color)
-            val luminance = (0.21 * r + 0.72 * g + 0.07 * b).toInt()
-            if (luminance > 165) newBitmap.setPixel(x, y, AndroidColor.TRANSPARENT)
+fun makeTransparent(source: Bitmap): Bitmap {
+    val result = source.copy(Bitmap.Config.ARGB_8888, true)
+    for (y in 0 until result.height) {
+        for (x in 0 until result.width) {
+            val p = result.getPixel(x, y)
+            val r = AndroidColor.red(p); val g = AndroidColor.green(p); val b = AndroidColor.blue(p)
+            // Aggressive threshold to clean up photo shadows
+            if (r > 150 && g > 150 && b > 150) {
+                result.setPixel(x, y, AndroidColor.TRANSPARENT)
+            }
         }
     }
-    return newBitmap
+    return result
 }
 
 @Composable
 fun PaperView(text: String, glyphMap: Map<Char, Bitmap>) {
-    val paperColor = Color(0xFFF9F6F0) 
+    val paperColor = Color(0xFFFDFBFA) // Creamy paper
     val paint = android.graphics.Paint().apply {
-        color = AndroidColor.BLACK
-        textSize = 45f
-        typeface = android.graphics.Typeface.SERIF
+        color = AndroidColor.DKGRAY
+        textSize = 42f
+        alpha = 180
     }
 
     Canvas(modifier = Modifier.fillMaxSize().background(paperColor)) {
         drawNotebookLines()
         drawPaperWrinkles()
 
-        var curX = 130f
+        var curX = 135f
         var curY = 175f
-        val lineSpacing = 65f
+        val lineH = 65f
 
         text.forEach { char ->
             val bitmap = glyphMap[char]
             
             if (bitmap != null) {
-                val targetH = 48f
+                val targetH = 45f
                 val scale = targetH / bitmap.height
                 val finalW = bitmap.width * scale
 
-                if (curX + finalW > size.width - 40f) {
-                    curX = 130f; curY += lineSpacing
+                if (curX + finalW > size.width - 50f) {
+                    curX = 135f; curY += lineH
                 }
 
                 drawImage(
                     image = bitmap.asImageBitmap(),
                     dstOffset = IntOffset(curX.toInt(), curY.toInt()),
                     dstSize = IntSize(finalW.toInt(), targetH.toInt()),
-                    blendMode = BlendMode.Multiply,
-                    alpha = 0.95f
+                    blendMode = BlendMode.Multiply, // Blends ink into the paper color
+                    alpha = 0.9f
                 )
-                curX += finalW + 6f
+                curX += finalW + 4f
             } else {
-                // FALLBACK: Use keyboard font if handwriting is missing
-                if (char == ' ') {
-                    curX += 40f
-                } else if (char == '\n') {
-                    curX = 130f; curY += lineSpacing
-                } else {
-                    drawContext.canvas.nativeCanvas.drawText(char.toString(), curX, curY + 40f, paint)
-                    curX += paint.measureText(char.toString()) + 4f
+                // FALLBACK: If handwriting is missing, use keyboard font
+                if (char == ' ') { curX += 35f }
+                else if (char == '\n') { curX = 135f; curY += lineH }
+                else {
+                    drawContext.canvas.nativeCanvas.drawText(char.toString(), curX, curY + 35f, paint)
+                    curX += paint.measureText(char.toString()) + 5f
                 }
             }
         }
@@ -213,24 +210,24 @@ fun PaperView(text: String, glyphMap: Map<Char, Bitmap>) {
 }
 
 fun DrawScope.drawNotebookLines() {
-    val lineBlue = Color(0xFFADCEEB).copy(alpha = 0.5f)
+    val blueLines = Color(0xFFADCEEB).copy(alpha = 0.4f)
     for (i in 0..size.height.toInt() step 65) {
         val y = 220f + i
-        drawLine(lineBlue, Offset(0f, y), Offset(size.width, y), 1.5f)
+        drawLine(blueLines, Offset(0f, y), Offset(size.width, y), 1.5f)
     }
-    drawLine(Color(0xFFFFB3B3).copy(alpha = 0.7f), Offset(110f, 0f), Offset(110f, size.height), 2.5f)
+    drawLine(Color(0xFFFFB3B3).copy(alpha = 0.6f), Offset(115f, 0f), Offset(115f, size.height), 2f)
 }
 
 fun DrawScope.drawPaperWrinkles() {
-    val random = Random(42) 
-    for (i in 0..8) {
-        val startX = random.nextFloat() * size.width
-        val startY = random.nextFloat() * size.height
+    val random = Random(123) 
+    for (i in 0..6) {
+        val x = random.nextFloat() * size.width
+        val y = random.nextFloat() * size.height
         drawLine(
-            color = Color.Black.copy(alpha = 0.025f),
-            start = Offset(startX, startY),
-            end = Offset(startX + 400f, startY + 150f),
-            strokeWidth = 50f
+            color = Color.Black.copy(alpha = 0.02f),
+            start = Offset(x, y),
+            end = Offset(x + 500f, y + 100f),
+            strokeWidth = 60f
         )
     }
 }
@@ -241,7 +238,7 @@ fun HandwritingInputDialog(initial: String, onDismiss: () -> Unit, onConfirm: (S
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = { Button(onClick = { onConfirm(text) }) { Text("Write") } },
-        title = { Text("Write your homework") },
+        title = { Text("Note Content") },
         text = { TextField(value = text, onValueChange = { text = it }) }
     )
 }
