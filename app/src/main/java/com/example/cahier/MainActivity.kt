@@ -31,23 +31,24 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         setContent {
-            var noteText by remember { mutableStateOf("") }
+            // 1. Set default text to 'a' so you can see your picked PNG immediately
+            var noteText by remember { mutableStateOf("a") }
             var showDialog by remember { mutableStateOf(false) }
             
-            // State to store mapped handwriting glyphs
+            // 2. Use a SnapshotStateMap to ensure the Canvas updates when a PNG is picked
             val glyphMap = remember { mutableStateMapOf<Char, Bitmap>() }
             val context = LocalContext.current
 
-            // Picker to select your handwriting PNG
-            val launcher = rememberLauncherForActivityResult(
+            val pngPickerLauncher = rememberLauncherForActivityResult(
                 contract = ActivityResultContracts.GetContent()
             ) { uri: Uri? ->
                 uri?.let {
-                    val inputStream = context.contentResolver.openInputStream(it)
-                    val bitmap = BitmapFactory.decodeStream(inputStream)
-                    // Temporary: Map the selected PNG to the letter 'a'
-                    // In a full implementation, you'd assign this to a specific character.
-                    glyphMap['a'] = bitmap 
+                    try {
+                        val inputStream = context.contentResolver.openInputStream(it)
+                        val bitmap = BitmapFactory.decodeStream(inputStream)
+                        // Maps your picked PNG to the letter 'a'
+                        glyphMap['a'] = bitmap
+                    } catch (e: Exception) { e.printStackTrace() }
                 }
             }
 
@@ -56,15 +57,12 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     floatingActionButton = {
                         Column(horizontalAlignment = Alignment.End) {
-                            // PNG Button to add your handwriting
                             SmallFloatingActionButton(
-                                onClick = { launcher.launch("image/png") },
-                                containerColor = MaterialTheme.colorScheme.secondaryContainer
+                                onClick = { pngPickerLauncher.launch("image/png") }
                             ) {
                                 Text("PNG", modifier = Modifier.padding(horizontal = 8.dp))
                             }
                             Spacer(modifier = Modifier.height(12.dp))
-                            // EDIT Button to type text
                             FloatingActionButton(onClick = { showDialog = true }) {
                                 Text("EDIT", modifier = Modifier.padding(horizontal = 16.dp))
                             }
@@ -97,67 +95,51 @@ fun PaperView(text: String, glyphMap: Map<Char, Bitmap>) {
         val width = size.width
         val height = size.height
         
-        // Notebook Aesthetics matched to your image
         val lineBlue = Color(0xFFADCEEB)
         val horizontalMargin = 110f
         val lineSpacing = 65f
         val headerSpace = 220f
 
-        // 1. Draw horizontal blue guidelines
+        // Draw horizontal lines
         var yPos = headerSpace
         while (yPos < height) {
             drawLine(lineBlue, Offset(0f, yPos), Offset(width, yPos), 2f)
             yPos += lineSpacing
         }
 
-        // 2. Render Handwriting Glyphs
+        // Render Handwriting PNGs
         var currentX = horizontalMargin + 25f
-        var currentY = headerSpace - 60f // Align bitmap with the blue line
+        var currentY = headerSpace - 80f // Adjusted to sit better on the line
 
         text.forEach { char ->
             val bitmap = glyphMap[char]
             if (bitmap != null) {
-                // Draw your custom PNG
+                // Scale the bitmap to fit the line height (approx 50-60 pixels)
                 drawImage(
                     image = bitmap.asImageBitmap(),
                     dstOffset = IntOffset(currentX.toInt(), currentY.toInt())
                 )
-                currentX += bitmap.width + 10f // Advance X by bitmap width
+                currentX += (bitmap.width + 10f) // Move X forward
                 
-                // Wrap to next line if it hits the edge
-                if (currentX > width - 40f) {
+                // Line wrapping
+                if (currentX > width - 60f) {
                     currentX = horizontalMargin + 25f
                     currentY += lineSpacing
                 }
             } else if (char == ' ') {
-                currentX += 40f // Space width
+                currentX += 40f
             }
         }
     }
 }
 
 @Composable
-fun HandwritingInputDialog(
-    initialText: String, 
-    onDismiss: () -> Unit, 
-    onConfirm: (String) -> Unit
-) {
+fun HandwritingInputDialog(initialText: String, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
     var text by remember { mutableStateOf(initialText) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Write your notes") },
-        text = {
-            TextField(
-                value = text, 
-                onValueChange = { text = it },
-                modifier = Modifier.fillMaxWidth()
-            )
-        },
-        confirmButton = {
-            Button(onClick = { onConfirm(text) }) { Text("Write") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        }
+        title = { Text("Write Text") },
+        text = { TextField(value = text, onValueChange = { text = it }) },
+        confirmButton = { Button(onClick = { onConfirm(text) }) { Text("Write") } }
     )
 }
