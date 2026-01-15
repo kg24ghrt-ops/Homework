@@ -31,24 +31,21 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         setContent {
-            // 1. Set default text to 'a' so you can see your picked PNG immediately
-            var noteText by remember { mutableStateOf("a") }
-            var showDialog by remember { mutableStateOf(false) }
+            var noteText by remember { mutableStateOf("") }
+            var showTextDialog by remember { mutableStateOf(false) }
+            var showAssignDialog by remember { mutableStateOf(false) }
+            var selectedUri by remember { mutableStateOf<Uri?>(null) }
             
-            // 2. Use a SnapshotStateMap to ensure the Canvas updates when a PNG is picked
             val glyphMap = remember { mutableStateMapOf<Char, Bitmap>() }
             val context = LocalContext.current
 
-            val pngPickerLauncher = rememberLauncherForActivityResult(
+            // Launcher to pick the PNG
+            val launcher = rememberLauncherForActivityResult(
                 contract = ActivityResultContracts.GetContent()
             ) { uri: Uri? ->
-                uri?.let {
-                    try {
-                        val inputStream = context.contentResolver.openInputStream(it)
-                        val bitmap = BitmapFactory.decodeStream(inputStream)
-                        // Maps your picked PNG to the letter 'a'
-                        glyphMap['a'] = bitmap
-                    } catch (e: Exception) { e.printStackTrace() }
+                if (uri != null) {
+                    selectedUri = uri
+                    showAssignDialog = true // Open dialog to ask "Which letter is this?"
                 }
             }
 
@@ -57,13 +54,11 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     floatingActionButton = {
                         Column(horizontalAlignment = Alignment.End) {
-                            SmallFloatingActionButton(
-                                onClick = { pngPickerLauncher.launch("image/png") }
-                            ) {
+                            SmallFloatingActionButton(onClick = { launcher.launch("image/png") }) {
                                 Text("PNG", modifier = Modifier.padding(horizontal = 8.dp))
                             }
                             Spacer(modifier = Modifier.height(12.dp))
-                            FloatingActionButton(onClick = { showDialog = true }) {
+                            FloatingActionButton(onClick = { showTextDialog = true }) {
                                 Text("EDIT", modifier = Modifier.padding(horizontal = 16.dp))
                             }
                         }
@@ -72,13 +67,30 @@ class MainActivity : ComponentActivity() {
                     Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
                         PaperView(text = noteText, glyphMap = glyphMap)
 
-                        if (showDialog) {
+                        // Dialog 1: Assigning the PNG to a letter
+                        if (showAssignDialog) {
+                            AssignGlyphDialog(
+                                onDismiss = { showAssignDialog = false },
+                                onConfirm = { char ->
+                                    selectedUri?.let { uri ->
+                                        val bitmap = BitmapFactory.decodeStream(
+                                            context.contentResolver.openInputStream(uri)
+                                        )
+                                        glyphMap[char.lowercaseChar()] = bitmap
+                                    }
+                                    showAssignDialog = false
+                                }
+                            )
+                        }
+
+                        // Dialog 2: Typing the note
+                        if (showTextDialog) {
                             HandwritingInputDialog(
                                 initialText = noteText,
-                                onDismiss = { showDialog = false },
+                                onDismiss = { showTextDialog = false },
                                 onConfirm = { 
                                     noteText = it.lowercase() 
-                                    showDialog = false
+                                    showTextDialog = false
                                 }
                             )
                         }
@@ -90,39 +102,57 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
+fun AssignGlyphDialog(onDismiss: () -> Unit, onConfirm: (Char) -> Unit) {
+    var charInput by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Which letter is this PNG?") },
+        text = {
+            TextField(
+                value = charInput,
+                onValueChange = { if (it.length <= 1) charInput = it },
+                placeholder = { Text("e.g. 'a'") }
+            )
+        },
+        confirmButton = {
+            Button(onClick = { if (charInput.isNotEmpty()) onConfirm(charInput[0]) }) {
+                Text("Assign")
+            }
+        }
+    )
+}
+
+@Composable
 fun PaperView(text: String, glyphMap: Map<Char, Bitmap>) {
     Canvas(modifier = Modifier.fillMaxSize().background(Color.White)) {
-        val width = size.width
-        val height = size.height
-        
         val lineBlue = Color(0xFFADCEEB)
         val horizontalMargin = 110f
         val lineSpacing = 65f
         val headerSpace = 220f
 
-        // Draw horizontal lines
+        // Draw Lines
         var yPos = headerSpace
-        while (yPos < height) {
-            drawLine(lineBlue, Offset(0f, yPos), Offset(width, yPos), 2f)
+        while (yPos < size.height) {
+            drawLine(lineBlue, Offset(0f, yPos), Offset(size.width, yPos), 2f)
             yPos += lineSpacing
         }
 
-        // Render Handwriting PNGs
+        // Render mapped PNGs
         var currentX = horizontalMargin + 25f
-        var currentY = headerSpace - 80f // Adjusted to sit better on the line
+        var currentY = headerSpace - 70f 
 
         text.forEach { char ->
             val bitmap = glyphMap[char]
             if (bitmap != null) {
-                // Scale the bitmap to fit the line height (approx 50-60 pixels)
+                // Determine scaling to fit line height
+                val scale = 50f / bitmap.height
                 drawImage(
                     image = bitmap.asImageBitmap(),
                     dstOffset = IntOffset(currentX.toInt(), currentY.toInt())
                 )
-                currentX += (bitmap.width + 10f) // Move X forward
+                currentX += (bitmap.width * scale) + 10f
                 
-                // Line wrapping
-                if (currentX > width - 60f) {
+                if (currentX > size.width - 60f) {
                     currentX = horizontalMargin + 25f
                     currentY += lineSpacing
                 }
@@ -138,7 +168,7 @@ fun HandwritingInputDialog(initialText: String, onDismiss: () -> Unit, onConfirm
     var text by remember { mutableStateOf(initialText) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Write Text") },
+        title = { Text("Type to use your PNGs") },
         text = { TextField(value = text, onValueChange = { text = it }) },
         confirmButton = { Button(onClick = { onConfirm(text) }) { Text("Write") } }
     )
