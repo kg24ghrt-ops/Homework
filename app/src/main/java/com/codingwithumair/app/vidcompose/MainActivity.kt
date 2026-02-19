@@ -28,7 +28,6 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             VidComposeTheme {
-                // Surface provides the stable background the OpenGLRenderer needs
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
@@ -38,17 +37,16 @@ class MainActivity : ComponentActivity() {
                     ) {}
 
                     RequestPermissionWrapper {
-                        // Crucial fix for "Unable to match swap behavior":
-                        // Defer UI initialization until the surface is hardware-ready
+                        // FIX for OpenGL swap error: Wait for surface to stabilize
                         var isReady by remember { mutableStateOf(false) }
                         LaunchedEffect(Unit) {
-                            delay(600) 
+                            delay(800) // Grace period for hardware buffers
                             isReady = true
                         }
 
                         if (isReady) {
                             AnimeNavHost(onPlayVideo = { uri ->
-                                val intent = Intent(this@MainActivity, PlayerActivity::class.java).apply {
+                                val intent = Intent(this, PlayerActivity::class.java).apply {
                                     data = uri
                                 }
                                 playerLauncher.launch(intent)
@@ -68,20 +66,15 @@ class MainActivity : ComponentActivity() {
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun RequestPermissionWrapper(content: @Composable () -> Unit) {
-    val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        Manifest.permission.READ_MEDIA_VIDEO
-    } else {
-        Manifest.permission.READ_EXTERNAL_STORAGE
-    }
-    val state = rememberPermissionState(permission)
+    val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) 
+        Manifest.permission.READ_MEDIA_VIDEO else Manifest.permission.READ_EXTERNAL_STORAGE
     
+    val state = rememberPermissionState(permission)
     LaunchedEffect(Unit) { if (!state.status.isGranted) state.launchPermissionRequest() }
 
     if (state.status.isGranted) content() else {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Button(onClick = { state.launchPermissionRequest() }) {
-                Text("Allow Access to Continue")
-            }
+            Button(onClick = { state.launchPermissionRequest() }) { Text("Grant Storage Access") }
         }
     }
 }
