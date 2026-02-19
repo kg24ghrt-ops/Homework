@@ -16,8 +16,8 @@ fun AnimeNavHost(onPlayVideo: (Uri) -> Unit) {
         composable(
             route = "detail/{animeId}",
             arguments = listOf(navArgument("animeId") { type = NavType.IntType })
-        ) { backStackEntry ->
-            val id = backStackEntry.arguments?.getInt("animeId")
+        ) { entry ->
+            val id = entry.arguments?.getInt("animeId")
             val anime = sampleAnimeList.find { it.id == id }
             anime?.let {
                 AnimeDetailScreen(
