@@ -13,7 +13,7 @@ jobs:
 
     steps:
       # Checkout the repo
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
 
       # Set up JDK
       - name: Set up JDK 21
