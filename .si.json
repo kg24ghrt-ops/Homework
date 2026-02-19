@@ -17,6 +17,10 @@
     ".kt": {
       "enabled": true,
       "run": "kotlin-language-server"
+    },
+    ".xml": {
+      "enabled": true,
+      "run": "lemminx"
     }
   }
 }

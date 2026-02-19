@@ -22,6 +22,7 @@ import com.codingwithumair.app.vidcompose.ui.theme.VidComposeTheme
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
+import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
 
@@ -36,9 +37,10 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             VidComposeTheme {
+                // Stabilize with a solid background color to prevent OpenGL buffer errors
                 Surface(
-                    modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.navigationBars),
-                    tonalElevation = 8.dp
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
                 ) {
                     val playerActivityLauncher = rememberLauncherForActivityResult(
                         contract = ActivityResultContracts.StartActivityForResult(),
@@ -46,13 +48,22 @@ class MainActivity : ComponentActivity() {
                     )
 
                     RequestPermissionAndDisplayContent {
-                        // Added a key to NavHost to force a clean state after permission is granted
-                        key(true) {
+                        // Use a local state to ensure we only load the NavHost 
+                        // once the hardware surface is ready
+                        var isSurfaceReady by remember { mutableStateOf(false) }
+                        
+                        LaunchedEffect(Unit) {
+                            // 500ms delay gives the OS time to disconnect the permission 
+                            // overlay and reconnect the app's BLASTBufferQueue
+                            delay(500) 
+                            isSurfaceReady = true
+                        }
+
+                        if (isSurfaceReady) {
                             AnimeNavHost(onPlayVideo = { uri ->
                                 try {
                                     val playerIntent = Intent(this, PlayerActivity::class.java).apply {
                                         data = uri
-                                        // Adding flags to ensure clean activity launch
                                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                                     }
                                     playerActivityLauncher.launch(playerIntent)
@@ -60,6 +71,11 @@ class MainActivity : ComponentActivity() {
                                     e.printStackTrace()
                                 }
                             })
+                        } else {
+                            // While waiting, show a simple loader to keep the UI thread light
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator()
+                            }
                         }
                     }
                 }
@@ -79,8 +95,7 @@ fun RequestPermissionAndDisplayContent(appContent: @Composable () -> Unit) {
     
     val permissionState = rememberPermissionState(permission)
 
-    // Request logic that won't trigger if already granted
-    LaunchedEffect(permissionState.status.isGranted) {
+    LaunchedEffect(Unit) {
         if (!permissionState.status.isGranted) {
             permissionState.launchPermissionRequest()
         }
@@ -91,14 +106,9 @@ fun RequestPermissionAndDisplayContent(appContent: @Composable () -> Unit) {
     } else {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                CircularProgressIndicator()
-                Spacer(modifier = Modifier.height(16.dp))
-                Text("Checking permissions...", style = MaterialTheme.typography.bodyMedium)
-                // Fallback button if the auto-prompt fails
-                Button(
-                    onClick = { permissionState.launchPermissionRequest() },
-                    modifier = Modifier.padding(top = 8.dp)
-                ) {
+                Text("Permission Required", style = MaterialTheme.typography.titleMedium)
+                Spacer(modifier = Modifier.height(8.dp))
+                Button(onClick = { permissionState.launchPermissionRequest() }) {
                     Text("Grant Permission")
                 }
             }
