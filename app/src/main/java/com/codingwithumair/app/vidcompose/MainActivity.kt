@@ -1,5 +1,6 @@
 package com.codingwithumair.app.vidcompose
 
+import android.Manifest
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
@@ -22,11 +23,13 @@ import com.codingwithumair.app.vidcompose.ui.theme.VidComposeTheme
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
+import com.google.accompanist.permissions.shouldShowRationale
 
 class MainActivity : ComponentActivity() {
 
     @UnstableApi
     override fun onCreate(savedInstanceState: Bundle?) {
+        // 1. Edge-to-edge and Cutout setup
         WindowCompat.setDecorFitsSystemWindows(window, false)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             window.attributes.layoutInDisplayCutoutMode =
@@ -46,11 +49,17 @@ class MainActivity : ComponentActivity() {
                     )
 
                     RequestPermissionAndDisplayContent {
+                        // Launch the Navigation Host from NavGraph.kt
                         AnimeNavHost(onPlayVideo = { uri ->
-                            val playerIntent = Intent(this@MainActivity, PlayerActivity::class.java).apply {
-                                data = uri
+                            try {
+                                val playerIntent = Intent(this, PlayerActivity::class.java).apply {
+                                    data = uri
+                                }
+                                playerActivityLauncher.launch(playerIntent)
+                            } catch (e: Exception) {
+                                // Prevent crash if PlayerActivity isn't registered correctly
+                                e.printStackTrace()
                             }
-                            playerActivityLauncher.launch(playerIntent)
                         })
                     }
                 }
@@ -62,27 +71,40 @@ class MainActivity : ComponentActivity() {
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun RequestPermissionAndDisplayContent(appContent: @Composable () -> Unit) {
+    // Select correct permission based on Android Version
     val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        android.Manifest.permission.READ_MEDIA_VIDEO
+        Manifest.permission.READ_MEDIA_VIDEO
     } else {
-        android.Manifest.permission.READ_EXTERNAL_STORAGE
+        Manifest.permission.READ_EXTERNAL_STORAGE
     }
+    
     val permissionState = rememberPermissionState(permission)
 
+    // Request permission on first launch
     LaunchedEffect(Unit) {
-        if (!permissionState.status.isGranted) permissionState.launchPermissionRequest()
+        if (!permissionState.status.isGranted && !permissionState.status.shouldShowRationale) {
+            permissionState.launchPermissionRequest()
+        }
     }
 
-    if (permissionState.status.isGranted) {
-        appContent()
-    } else {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Permission needed to access videos")
-                Spacer(modifier = Modifier.height(8.dp))
-                Button(onClick = { permissionState.launchPermissionRequest() }) {
-                    Text("Grant Permission")
+    // Use a 'when' block to prevent state-flicker crashes
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        when {
+            permissionState.status.isGranted -> {
+                appContent()
+            }
+            permissionState.status.shouldShowRationale -> {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("Storage access is needed to play videos.", style = MaterialTheme.typography.bodyMedium)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Button(onClick = { permissionState.launchPermissionRequest() }) {
+                        Text("Grant Permission")
+                    }
                 }
+            }
+            else -> {
+                // Initial state or request in progress
+                CircularProgressIndicator()
             }
         }
     }
