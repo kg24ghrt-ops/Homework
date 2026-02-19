@@ -13,6 +13,10 @@
     ".yml": {
       "enabled": true,
       "run": "yaml-language-server --stdio"
+    },
+    ".kt": {
+      "enabled": true,
+      "run": "kotlin-language-server"
     }
   }
 }

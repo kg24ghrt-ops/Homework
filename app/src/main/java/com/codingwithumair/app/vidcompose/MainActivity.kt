@@ -8,30 +8,34 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.size
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import androidx.media3.common.util.UnstableApi
+import androidx.navigation.NavType
+import androidx.navigation.compose.*
+import androidx.navigation.navArgument
+import coil.compose.AsyncImage
 import com.codingwithumair.app.vidcompose.player.PlayerActivity
-import com.codingwithumair.app.vidcompose.ui.screens.mainScreen.MainScreenWithBottomNavigation
 import com.codingwithumair.app.vidcompose.ui.theme.VidComposeTheme
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
@@ -40,111 +44,175 @@ import com.google.accompanist.permissions.shouldShowRationale
 
 class MainActivity : ComponentActivity() {
 
-	@UnstableApi
-	override fun onCreate(savedInstanceState: Bundle?) {
+    @UnstableApi
+    override fun onCreate(savedInstanceState: Bundle?) {
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            window.attributes.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+        }
+        super.onCreate(savedInstanceState)
 
-		WindowCompat.setDecorFitsSystemWindows(window, false)
+        setContent {
+            VidComposeTheme {
+                Surface(
+                    modifier = Modifier.fillMaxSize().navigationBarsPadding(),
+                    tonalElevation = 8.dp
+                ) {
+                    val playerActivityLauncher = rememberLauncherForActivityResult(
+                        contract = ActivityResultContracts.StartActivityForResult(),
+                        onResult = {}
+                    )
 
-		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-			window.attributes.layoutInDisplayCutoutMode =
-				WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
-		}else if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.P){
-			window.attributes.layoutInDisplayCutoutMode =
-				WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
-		}
-
-		super.onCreate(savedInstanceState)
-
-		setContent {
-
-			VidComposeTheme{
-
-				 Surface(
-					 modifier = Modifier
-						 .fillMaxSize()
-						 .navigationBarsPadding(),
-					 tonalElevation = 8.dp
-				 ){
-					 val playerActivityLauncher = rememberLauncherForActivityResult(
-						 contract = ActivityResultContracts.StartActivityForResult(),
-						 onResult = {}
-					 )
-
-					 RequestPermissionAndDisplayContent {
-						 MainScreenWithBottomNavigation(
-							 onVideoItemClick = { videoItem ->
-								 val playerIntent = Intent(this@MainActivity, PlayerActivity::class.java).apply{
-									 data = videoItem.uri
-								 }
-								 playerActivityLauncher.launch(playerIntent)
-
-							 }
-						 )
-					 }
-				}
-			}
-		}
-	}
+                    RequestPermissionAndDisplayContent {
+                        AnimeAppNavigation(onPlayVideo = { uri ->
+                            val playerIntent = Intent(this@MainActivity, PlayerActivity::class.java).apply {
+                                data = uri
+                            }
+                            playerActivityLauncher.launch(playerIntent)
+                        })
+                    }
+                }
+            }
+        }
+    }
 }
+
+@Composable
+fun AnimeAppNavigation(onPlayVideo: (android.net.Uri) -> Unit) {
+    val navController = rememberNavController()
+    NavHost(navController = navController, startDestination = "home") {
+        composable("home") {
+            HomeScreen(onAnimeClick = { id -> navController.navigate("detail/$id") })
+        }
+        composable(
+            "detail/{animeId}",
+            arguments = listOf(navArgument("animeId") { type = NavType.IntType })
+        ) { backStackEntry ->
+            val id = backStackEntry.arguments?.getInt("animeId")
+            val anime = sampleAnimeList.find { it.id == id }
+            anime?.let {
+                AnimeDetailScreen(
+                    anime = it,
+                    onBack = { navController.popBackStack() },
+                    onPlayEpisode = { uri -> onPlayVideo(uri) }
+                )
+            }
+        }
+    }
+}
+
+// --- UI COMPONENTS ---
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun HomeScreen(onAnimeClick: (Int) -> Unit) {
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    
+    Scaffold(
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+        topBar = {
+            LargeTopAppBar(
+                title = { Text("AnimeApp", fontWeight = FontWeight.Bold) },
+                scrollBehavior = scrollBehavior
+            )
+        }
+    ) { padding ->
+        LazyColumn(contentPadding = padding) {
+            items(sampleAnimeList) { anime ->
+                AnimeCard(anime) { onAnimeClick(anime.id) }
+            }
+        }
+    }
+}
+
+@Composable
+fun AnimeCard(anime: Anime, onClick: () -> Unit) {
+    ElevatedCard(
+        modifier = Modifier.padding(16.dp, 8.dp).fillMaxWidth().clickable(onClick = onClick),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Row(modifier = Modifier.padding(8.dp).height(120.dp)) {
+            AsyncImage(
+                model = anime.posterUrl,
+                contentDescription = null,
+                modifier = Modifier.width(90.dp).fillMaxHeight().clip(RoundedCornerShape(8.dp)),
+                contentScale = ContentScale.Crop
+            )
+            Column(modifier = Modifier.padding(start = 12.dp)) {
+                Text(anime.title, style = MaterialTheme.typography.titleMedium, maxLines = 1)
+                Text(
+                    anime.description,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(Modifier.weight(1f))
+                SuggestionChip(onClick = {}, label = { Text("${anime.episodes.size} Eps") })
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AnimeDetailScreen(anime: Anime, onBack: () -> Unit, onPlayEpisode: (android.net.Uri) -> Unit) {
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(anime.title) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null) }
+                }
+            )
+        }
+    ) { padding ->
+        Column(modifier = Modifier.padding(padding).fillMaxSize()) {
+            AsyncImage(
+                model = anime.posterUrl,
+                contentDescription = null,
+                modifier = Modifier.fillMaxWidth().height(250.dp),
+                contentScale = ContentScale.Crop
+            )
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("About", style = MaterialTheme.typography.titleLarge)
+                Text(anime.description, style = MaterialTheme.typography.bodyMedium)
+                
+                Spacer(Modifier.height(16.dp))
+                Text("Episodes", style = MaterialTheme.typography.titleLarge)
+                
+                anime.episodes.forEach { episode ->
+                    OutlinedCard(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        onClick = { onPlayEpisode(episode.videoUri) }
+                    ) {
+                        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.PlayArrow, null)
+                            Spacer(Modifier.width(12.dp))
+                            Text(episode.title)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
-private fun RequestPermissionAndDisplayContent(
-	appContent: @Composable () -> Unit,
-) {
+private fun RequestPermissionAndDisplayContent(appContent: @Composable () -> Unit) {
+    val readVideoPermissionState = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        rememberPermissionState(android.Manifest.permission.READ_MEDIA_VIDEO)
+    } else {
+        rememberPermissionState(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+    }
 
-	val readVideoPermissionState = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-		rememberPermissionState(
-			android.Manifest.permission.READ_MEDIA_VIDEO
-		)
-	} else {
-		rememberPermissionState(
-			android.Manifest.permission.READ_EXTERNAL_STORAGE
-		)
-	}
+    LaunchedEffect(Unit) { if (!readVideoPermissionState.status.isGranted) readVideoPermissionState.launchPermissionRequest() }
 
-	fun requestPermissions(){
-		readVideoPermissionState.launchPermissionRequest()
-	}
-
-	LaunchedEffect(key1 = Unit){
-		if(!readVideoPermissionState.status.isGranted){
-			requestPermissions()
-		}
-	}
-
-	if (readVideoPermissionState.status.isGranted) {
-
-		appContent()
-
-	} else {
-
-		Column(
-			modifier = Modifier.fillMaxSize(),
-			verticalArrangement = Arrangement.Center,
-			horizontalAlignment = Alignment.CenterHorizontally
-		){
-			Icon(
-				painterResource(id = R.drawable.round_warning_amber_24),
-				null,
-				tint = MaterialTheme.colorScheme.error
-			)
-			Text(
-				stringResource(id = R.string.no_permission),
-				fontWeight = FontWeight.Bold,
-				color = MaterialTheme.colorScheme.error
-			)
-			if(readVideoPermissionState.status.shouldShowRationale){
-				Spacer(modifier = Modifier.size(8.dp))
-				OutlinedButton(
-					onClick = { requestPermissions() },
-					colors = ButtonDefaults.outlinedButtonColors(containerColor = MaterialTheme.colorScheme.errorContainer)
-				) {
-					Text(
-						stringResource(id = R.string.request_again),
-						color = MaterialTheme.colorScheme.onErrorContainer
-					)
-				}
-			}
-		}
-	}
+    if (readVideoPermissionState.status.isGranted) {
+        appContent()
+    } else {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text("Permissions required to browse local media.", color = MaterialTheme.colorScheme.error)
+        }
+    }
 }
