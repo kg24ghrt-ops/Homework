@@ -28,6 +28,7 @@ class MainActivity : ComponentActivity() {
 
     @UnstableApi
     override fun onCreate(savedInstanceState: Bundle?) {
+        // 1. Set up edge-to-edge and cutout handling
         WindowCompat.setDecorFitsSystemWindows(window, false)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             window.attributes.layoutInDisplayCutoutMode =
@@ -37,7 +38,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             VidComposeTheme {
-                // Stabilize with a solid background color to prevent OpenGL buffer errors
+                // 2. Surface with explicit color satisfies OpenGL swap behavior errors
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
@@ -48,33 +49,33 @@ class MainActivity : ComponentActivity() {
                     )
 
                     RequestPermissionAndDisplayContent {
-                        // Use a local state to ensure we only load the NavHost 
-                        // once the hardware surface is ready
+                        // 3. Deferred initialization to let BLASTBufferQueue stabilize 
+                        // after the permission dialog closes
                         var isSurfaceReady by remember { mutableStateOf(false) }
                         
                         LaunchedEffect(Unit) {
-                            // 500ms delay gives the OS time to disconnect the permission 
-                            // overlay and reconnect the app's BLASTBufferQueue
-                            delay(500) 
+                            delay(600) // Slightly increased to 600ms for extra safety
                             isSurfaceReady = true
                         }
 
                         if (isSurfaceReady) {
                             AnimeNavHost(onPlayVideo = { uri ->
                                 try {
-                                    val playerIntent = Intent(this, PlayerActivity::class.java).apply {
+                                    val playerIntent = Intent(this@MainActivity, PlayerActivity::class.java).apply {
                                         data = uri
-                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        // Essential flag for clean activity transitions
+                                        addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
                                     }
                                     playerActivityLauncher.launch(playerIntent)
                                 } catch (e: Exception) {
+                                    // Log the error to prevent silent failures
                                     e.printStackTrace()
                                 }
                             })
                         } else {
-                            // While waiting, show a simple loader to keep the UI thread light
+                            // Show a lightweight loader during the 600ms grace period
                             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                CircularProgressIndicator()
+                                CircularProgressIndicator(strokeWidth = 3.dp)
                             }
                         }
                     }
@@ -95,6 +96,7 @@ fun RequestPermissionAndDisplayContent(appContent: @Composable () -> Unit) {
     
     val permissionState = rememberPermissionState(permission)
 
+    // Trigger request on first launch if not granted
     LaunchedEffect(Unit) {
         if (!permissionState.status.isGranted) {
             permissionState.launchPermissionRequest()
@@ -104,12 +106,16 @@ fun RequestPermissionAndDisplayContent(appContent: @Composable () -> Unit) {
     if (permissionState.status.isGranted) {
         appContent()
     } else {
+        // Clean UI for the permission state
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Permission Required", style = MaterialTheme.typography.titleMedium)
-                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    "Video Access Required", 
+                    style = MaterialTheme.typography.titleMedium
+                )
+                Spacer(modifier = Modifier.height(12.dp))
                 Button(onClick = { permissionState.launchPermissionRequest() }) {
-                    Text("Grant Permission")
+                    Text("Allow Access")
                 }
             }
         }
