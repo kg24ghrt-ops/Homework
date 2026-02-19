@@ -1,6 +1,7 @@
 package com.codingwithumair.app.vidcompose
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
@@ -42,6 +43,25 @@ import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
 import com.google.accompanist.permissions.shouldShowRationale
 
+// 1. DATA MODELS (Moved inside to avoid redeclaration if files are deleted)
+data class Anime(
+    val id: Int,
+    val title: String,
+    val description: String,
+    val posterUrl: String,
+    val episodes: List<Episode>
+)
+
+data class Episode(
+    val title: String,
+    val videoUri: Uri
+)
+
+val sampleAnimeList = listOf(
+    Anime(1, "Cyberpunk: Edgerunners", "A street kid tries to survive in a technology-obsessed city.", "https://picsum.photos/seed/anime1/400/600", listOf(Episode("Episode 1", Uri.parse("https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4")))),
+    Anime(2, "Chainsaw Man", "A teenage boy living with a Chainsaw Devil.", "https://picsum.photos/seed/anime2/400/600", listOf(Episode("Episode 1", Uri.parse("https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4"))))
+)
+
 class MainActivity : ComponentActivity() {
 
     @UnstableApi
@@ -78,7 +98,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun AnimeAppNavigation(onPlayVideo: (android.net.Uri) -> Unit) {
+fun AnimeAppNavigation(onPlayVideo: (Uri) -> Unit) {
     val navController = rememberNavController()
     NavHost(navController = navController, startDestination = "home") {
         composable("home") {
@@ -100,8 +120,6 @@ fun AnimeAppNavigation(onPlayVideo: (android.net.Uri) -> Unit) {
         }
     }
 }
-
-// --- UI COMPONENTS ---
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -140,12 +158,7 @@ fun AnimeCard(anime: Anime, onClick: () -> Unit) {
             )
             Column(modifier = Modifier.padding(start = 12.dp)) {
                 Text(anime.title, style = MaterialTheme.typography.titleMedium, maxLines = 1)
-                Text(
-                    anime.description,
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Text(anime.description, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Spacer(Modifier.weight(1f))
                 SuggestionChip(onClick = {}, label = { Text("${anime.episodes.size} Eps") })
             }
@@ -155,36 +168,24 @@ fun AnimeCard(anime: Anime, onClick: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AnimeDetailScreen(anime: Anime, onBack: () -> Unit, onPlayEpisode: (android.net.Uri) -> Unit) {
+fun AnimeDetailScreen(anime: Anime, onBack: () -> Unit, onPlayEpisode: (Uri) -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(anime.title) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null) }
-                }
+                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null) } }
             )
         }
     ) { padding ->
         Column(modifier = Modifier.padding(padding).fillMaxSize()) {
-            AsyncImage(
-                model = anime.posterUrl,
-                contentDescription = null,
-                modifier = Modifier.fillMaxWidth().height(250.dp),
-                contentScale = ContentScale.Crop
-            )
+            AsyncImage(model = anime.posterUrl, contentDescription = null, modifier = Modifier.fillMaxWidth().height(250.dp), contentScale = ContentScale.Crop)
             Column(modifier = Modifier.padding(16.dp)) {
                 Text("About", style = MaterialTheme.typography.titleLarge)
                 Text(anime.description, style = MaterialTheme.typography.bodyMedium)
-                
                 Spacer(Modifier.height(16.dp))
                 Text("Episodes", style = MaterialTheme.typography.titleLarge)
-                
                 anime.episodes.forEach { episode ->
-                    OutlinedCard(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                        onClick = { onPlayEpisode(episode.videoUri) }
-                    ) {
+                    OutlinedCard(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), onClick = { onPlayEpisode(episode.videoUri) }) {
                         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.PlayArrow, null)
                             Spacer(Modifier.width(12.dp))
