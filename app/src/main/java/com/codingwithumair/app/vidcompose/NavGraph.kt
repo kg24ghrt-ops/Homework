@@ -1,13 +1,14 @@
 // File: NavGraph.kt
 package com.codingwithumair.app.vidcompose
 
+import android.net.Uri
 import androidx.compose.runtime.Composable
-import androidx.navigation.compose.*
 import androidx.navigation.NavType
+import androidx.navigation.compose.*
 import androidx.navigation.navArgument
 
 @Composable
-fun AnimeNavHost(onPlayVideo: (String) -> Unit) {
+fun AnimeNavHost(onPlayVideo: (Uri) -> Unit) { // Changed String to Uri
     val navController = rememberNavController()
 
     NavHost(navController = navController, startDestination = "home") {
@@ -26,7 +27,7 @@ fun AnimeNavHost(onPlayVideo: (String) -> Unit) {
                 AnimeDetailScreen(
                     anime = it,
                     onBack = { navController.popBackStack() },
-                    onEpisodeClick = { url -> onPlayVideo(url) }
+                    onPlayEpisode = { uri -> onPlayVideo(uri) } // Changed parameter name to match UI
                 )
             }
         }
