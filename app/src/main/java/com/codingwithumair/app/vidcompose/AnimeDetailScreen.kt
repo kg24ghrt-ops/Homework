@@ -25,7 +25,7 @@ fun AnimeDetailScreen(
             TopAppBar(
                 title = { Text(anime.title) },
                 navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null) }
+                    IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "Back") }
                 }
             )
         }
@@ -38,11 +38,11 @@ fun AnimeDetailScreen(
                 contentScale = ContentScale.Crop
             )
             Column(modifier = Modifier.padding(16.dp)) {
-                Text("About", style = MaterialTheme.typography.titleLarge)
-                Text(anime.description, style = MaterialTheme.typography.bodyMedium)
+                Text(text = "About", style = MaterialTheme.typography.titleLarge)
+                Text(text = anime.description, style = MaterialTheme.typography.bodyMedium)
                 
-                Spacer(Modifier.height(24.dp))
-                Text("Episodes", style = MaterialTheme.typography.titleLarge)
+                Spacer(modifier = Modifier.height(24.dp))
+                Text(text = "Episodes", style = MaterialTheme.typography.titleLarge)
                 
                 anime.episodes.forEach { episode ->
                     OutlinedCard(
@@ -50,9 +50,9 @@ fun AnimeDetailScreen(
                         onClick = { onPlayEpisode(episode.videoUri) }
                     ) {
                         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.PlayArrow, null)
+                            Icon(Icons.Default.PlayArrow, contentDescription = null)
                             Spacer(Modifier.width(12.dp))
-                            Text(episode.title)
+                            Text(text = episode.title)
                         }
                     }
                 }

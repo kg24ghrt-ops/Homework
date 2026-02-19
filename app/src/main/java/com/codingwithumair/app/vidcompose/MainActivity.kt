@@ -24,11 +24,13 @@ import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
 
 class MainActivity : ComponentActivity() {
+
     @UnstableApi
     override fun onCreate(savedInstanceState: Bundle?) {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            window.attributes.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+            window.attributes.layoutInDisplayCutoutMode =
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
         }
         super.onCreate(savedInstanceState)
 
@@ -75,8 +77,12 @@ fun RequestPermissionAndDisplayContent(appContent: @Composable () -> Unit) {
         appContent()
     } else {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Button(onClick = { permissionState.launchPermissionRequest() }) {
-                Text("Grant Permission to Continue")
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("Permission needed to access videos")
+                Spacer(modifier = Modifier.height(8.dp))
+                Button(onClick = { permissionState.launchPermissionRequest() }) {
+                    Text("Grant Permission")
+                }
             }
         }
     }
