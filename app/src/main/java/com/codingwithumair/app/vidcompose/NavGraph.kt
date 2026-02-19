@@ -9,16 +9,19 @@ import androidx.navigation.navArgument
 @Composable
 fun AnimeNavHost(onPlayVideo: (Uri) -> Unit) {
     val navController = rememberNavController()
+
     NavHost(navController = navController, startDestination = "home") {
         composable("home") {
-            HomeScreen(onAnimeClick = { id -> navController.navigate("detail/$id") })
+            HomeScreen(onAnimeClick = { animeId ->
+                navController.navigate("detail/$animeId")
+            })
         }
         composable(
             "detail/{animeId}",
             arguments = listOf(navArgument("animeId") { type = NavType.IntType })
-        ) { entry ->
-            val id = entry.arguments?.getInt("animeId")
-            val anime = sampleAnimeList.find { it.id == id }
+        ) { backStackEntry ->
+            val animeId = backStackEntry.arguments?.getInt("animeId")
+            val anime = sampleAnimeList.find { it.id == animeId }
             anime?.let {
                 AnimeDetailScreen(
                     anime = it,
