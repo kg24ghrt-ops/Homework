@@ -11,8 +11,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -23,13 +22,11 @@ import com.codingwithumair.app.vidcompose.ui.theme.VidComposeTheme
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
-import com.google.accompanist.permissions.shouldShowRationale
 
 class MainActivity : ComponentActivity() {
 
     @UnstableApi
     override fun onCreate(savedInstanceState: Bundle?) {
-        // 1. Edge-to-edge and Cutout setup
         WindowCompat.setDecorFitsSystemWindows(window, false)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             window.attributes.layoutInDisplayCutoutMode =
@@ -40,7 +37,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             VidComposeTheme {
                 Surface(
-                    modifier = Modifier.fillMaxSize().navigationBarsPadding(),
+                    modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.navigationBars),
                     tonalElevation = 8.dp
                 ) {
                     val playerActivityLauncher = rememberLauncherForActivityResult(
@@ -49,18 +46,21 @@ class MainActivity : ComponentActivity() {
                     )
 
                     RequestPermissionAndDisplayContent {
-                        // Launch the Navigation Host from NavGraph.kt
-                        AnimeNavHost(onPlayVideo = { uri ->
-                            try {
-                                val playerIntent = Intent(this, PlayerActivity::class.java).apply {
-                                    data = uri
+                        // Added a key to NavHost to force a clean state after permission is granted
+                        key(true) {
+                            AnimeNavHost(onPlayVideo = { uri ->
+                                try {
+                                    val playerIntent = Intent(this, PlayerActivity::class.java).apply {
+                                        data = uri
+                                        // Adding flags to ensure clean activity launch
+                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    }
+                                    playerActivityLauncher.launch(playerIntent)
+                                } catch (e: Exception) {
+                                    e.printStackTrace()
                                 }
-                                playerActivityLauncher.launch(playerIntent)
-                            } catch (e: Exception) {
-                                // Prevent crash if PlayerActivity isn't registered correctly
-                                e.printStackTrace()
-                            }
-                        })
+                            })
+                        }
                     }
                 }
             }
@@ -71,7 +71,6 @@ class MainActivity : ComponentActivity() {
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun RequestPermissionAndDisplayContent(appContent: @Composable () -> Unit) {
-    // Select correct permission based on Android Version
     val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         Manifest.permission.READ_MEDIA_VIDEO
     } else {
@@ -80,31 +79,28 @@ fun RequestPermissionAndDisplayContent(appContent: @Composable () -> Unit) {
     
     val permissionState = rememberPermissionState(permission)
 
-    // Request permission on first launch
-    LaunchedEffect(Unit) {
-        if (!permissionState.status.isGranted && !permissionState.status.shouldShowRationale) {
+    // Request logic that won't trigger if already granted
+    LaunchedEffect(permissionState.status.isGranted) {
+        if (!permissionState.status.isGranted) {
             permissionState.launchPermissionRequest()
         }
     }
 
-    // Use a 'when' block to prevent state-flicker crashes
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        when {
-            permissionState.status.isGranted -> {
-                appContent()
-            }
-            permissionState.status.shouldShowRationale -> {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("Storage access is needed to play videos.", style = MaterialTheme.typography.bodyMedium)
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Button(onClick = { permissionState.launchPermissionRequest() }) {
-                        Text("Grant Permission")
-                    }
-                }
-            }
-            else -> {
-                // Initial state or request in progress
+    if (permissionState.status.isGranted) {
+        appContent()
+    } else {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 CircularProgressIndicator()
+                Spacer(modifier = Modifier.height(16.dp))
+                Text("Checking permissions...", style = MaterialTheme.typography.bodyMedium)
+                // Fallback button if the auto-prompt fails
+                Button(
+                    onClick = { permissionState.launchPermissionRequest() },
+                    modifier = Modifier.padding(top = 8.dp)
+                ) {
+                    Text("Grant Permission")
+                }
             }
         }
     }
