@@ -32,3 +32,8 @@ fun AnimeNavHost(onPlayVideo: (Uri) -> Unit) {
         }
     }
 }
+
+
+
+
+//i2. Add all new and updated files
