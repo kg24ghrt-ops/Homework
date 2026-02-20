@@ -14,6 +14,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.core.view.WindowCompat
+import com.codingwithumair.app.vidcompose.navigation.AnimeNavHost
 import com.codingwithumair.app.vidcompose.player.PlayerActivity
 import com.codingwithumair.app.vidcompose.ui.theme.VidComposeTheme
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
@@ -23,6 +24,7 @@ import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        // 1. Enable Edge-to-Edge for that modern Material 3 look
         WindowCompat.setDecorFitsSystemWindows(window, false)
         super.onCreate(savedInstanceState)
 
@@ -32,12 +34,13 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
+                    // 2. Setup the bridge to your existing PlayerActivity
                     val playerLauncher = rememberLauncherForActivityResult(
                         ActivityResultContracts.StartActivityForResult()
                     ) {}
 
                     RequestPermissionWrapper {
-                        // FIX for OpenGL swap error: Wait for surface to stabilize
+                        // 3. Keep your OpenGL stability fix
                         var isReady by remember { mutableStateOf(false) }
                         LaunchedEffect(Unit) {
                             delay(800) // Grace period for hardware buffers
@@ -45,6 +48,7 @@ class MainActivity : ComponentActivity() {
                         }
 
                         if (isReady) {
+                            // 4. Inject the new Anime Discovery Navigation
                             AnimeNavHost(onPlayVideo = { uri ->
                                 val intent = Intent(this, PlayerActivity::class.java).apply {
                                     data = uri
@@ -52,8 +56,9 @@ class MainActivity : ComponentActivity() {
                                 playerLauncher.launch(intent)
                             })
                         } else {
+                            // Professional loading state while the UI stabilizes
                             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                CircularProgressIndicator()
+                                CircularProgressIndicator(strokeCap = androidx.compose.ui.graphics.StrokeCap.Round)
                             }
                         }
                     }
@@ -70,11 +75,37 @@ fun RequestPermissionWrapper(content: @Composable () -> Unit) {
         Manifest.permission.READ_MEDIA_VIDEO else Manifest.permission.READ_EXTERNAL_STORAGE
     
     val state = rememberPermissionState(permission)
-    LaunchedEffect(Unit) { if (!state.status.isGranted) state.launchPermissionRequest() }
+    
+    // Auto-launch request if not granted
+    LaunchedEffect(Unit) { 
+        if (!state.status.isGranted) state.launchPermissionRequest() 
+    }
 
-    if (state.status.isGranted) content() else {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Button(onClick = { state.launchPermissionRequest() }) { Text("Grant Storage Access") }
+    if (state.status.isGranted) {
+        content()
+    } else {
+        // Modern M3 Empty State for permissions
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                "Storage Access Required", 
+                style = MaterialTheme.typography.headlineSmall,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "To play local anime files, we need storage access.",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(horizontal = 32.dp),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+            Spacer(Modifier.height(24.dp))
+            Button(onClick = { state.launchPermissionRequest() }) {
+                Text("Grant Permission")
+            }
         }
     }
 }
