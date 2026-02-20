@@ -1,4 +1,4 @@
-Name: Android Debug CI
+name: Android Debug CI
 
 on:
   push:
@@ -19,17 +19,22 @@ jobs:
       with:
         java-version: '17'
         distribution: 'temurin'
-        cache: gradle
 
-    - name: Grant execute permission for gradle
+    # THIS IS THE FIX: It forces the CI to use a version that doesn't have the "HasConvention" error
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v3
+      with:
+        gradle-version: 8.10.2
+
+    - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
     - name: Build Debug APK
-      run: ./gradlew assembleDebug
+      # We use --no-daemon to prevent memory crashes on the runner
+      run: ./gradlew assembleDebug 
 
     - name: Upload Debug APK
       uses: actions/upload-artifact@v4
       with:
         name: debug-apk
         path: app/build/outputs/apk/debug/app-debug.apk
-        
