@@ -19,19 +19,26 @@ jobs:
       with:
         java-version: '17'
         distribution: 'temurin'
+        # We disable the basic java cache because the Gradle Action below does it better
+        cache: '' 
 
-    # THIS IS THE FIX: It forces the CI to use a version that doesn't have the "HasConvention" error
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v3
       with:
         gradle-version: 8.10.2
+        # This enables the advanced caching for dependencies and build outputs
+        cache-read-only: false 
+        cache-overwrite-existing: true
+
+    - name: Regenerate Wrapper
+      run: gradle wrapper
 
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
     - name: Build Debug APK
-      # We use --no-daemon to prevent memory crashes on the runner
-      run: ./gradlew assembleDebug 
+      # '--build-cache' is the magic flag that speeds up rebuilds
+      run: ./gradlew assembleDebug --build-cache --no-daemon
 
     - name: Upload Debug APK
       uses: actions/upload-artifact@v4
