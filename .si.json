@@ -21,6 +21,10 @@
     ".xml": {
       "enabled": true,
       "run": "lemminx"
+    },
+    ".toml": {
+      "enabled": false,
+      "run": "taplo lsp stdio"
     }
   }
 }
