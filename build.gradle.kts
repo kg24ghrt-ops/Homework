@@ -1,6 +1,7 @@
 plugins {
-    // This version 8.2.2 matches the Gradle 8.2 requirement
+    // Update this to match what you want for the whole project
+    alias(libs.plugins.android.application) apply false 
+    // OR if you aren't using Version Catalogs:
     id("com.android.application") version "8.2.2" apply false
-    id("com.android.library") version "8.2.2" apply false
     id("org.jetbrains.kotlin.android") version "1.9.0" apply false
 }

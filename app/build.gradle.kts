@@ -1,11 +1,3 @@
-plugins {
-    // AGP 9.0+ now has built-in Kotlin support; 
-    // org.jetbrains.kotlin.android is no longer strictly required.
-    id("com.android.application") version "9.0.1"
-    
-    // Kotlin 2.0+ uses the Compose Compiler Gradle Plugin
-    id("org.jetbrains.kotlin.plugin.compose") version "2.1.0"
-}
 
 android {
     namespace = "com.codingwithumair.app.vidcompose"
