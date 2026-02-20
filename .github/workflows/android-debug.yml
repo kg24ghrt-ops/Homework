@@ -1,4 +1,4 @@
-name: Android Debug CI
+Name: Android Debug CI
 
 on:
   push:
@@ -19,23 +19,17 @@ jobs:
       with:
         java-version: '17'
         distribution: 'temurin'
+        cache: gradle
 
-    # Official Gradle Action: This is safer than running './gradlew' directly
-    # It will automatically use the version specified if the wrapper is broken.
-    - name: Setup Gradle
-      uses: gradle/actions/setup-gradle@v3
-      with:
-        gradle-version: 8.10.2 # Stable version for Java 17/M3
-
-    - name: Grant execute permission for gradlew
+    - name: Grant execute permission for gradle
       run: chmod +x gradlew
 
     - name: Build Debug APK
-      # Use 'gradle' instead of './gradlew' to ensure it uses the version we set above
-      run: gradle assembleDebug --stacktrace
+      run: ./gradlew assembleDebug
 
     - name: Upload Debug APK
       uses: actions/upload-artifact@v4
       with:
         name: debug-apk
         path: app/build/outputs/apk/debug/app-debug.apk
+        
