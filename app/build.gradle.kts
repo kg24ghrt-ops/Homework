@@ -75,7 +75,10 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
     implementation("androidx.activity:activity-compose:1.8.2")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
-
+    implementation("com.github.skydoves:landscapist-glide:2.2.3")
+    
+    // Ensure Glide itself is present if it was removed
+    implementation("github.com.bumptech.glide:glide:4.15.1")
     // Cleanup: Removed skydoves-glide as we are using Coil for the rebuild
     
     testImplementation("junit:junit:4.13.2")
@@ -85,4 +88,5 @@ dependencies {
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
+    
 }
