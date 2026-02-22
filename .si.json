@@ -9,6 +9,22 @@
     ".yml": {
       "enabled": false,
       "run": "yaml-language-server --stdio"
+    },
+    ".md": {
+      "enabled": false,
+      "run": "marksman server"
+    },
+    ".xml": {
+      "enabled": false,
+      "run": "lemminx"
+    },
+    ".kts": {
+      "enabled": true,
+      "run": "kotlin-language-server"
+    },
+    ".properties": {
+      "enabled": true,
+      "run": "lemminx"
     }
   }
 }
