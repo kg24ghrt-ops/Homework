@@ -17,18 +17,16 @@ import com.debk007.template.presentation.viewmodel.AnimeViewModel
 @Composable
 fun App() {
     val navController = rememberNavController()
-    // We'll use a single ViewModel for now, or separate ones per screen as needed
     val viewModel = hiltViewModel<AnimeViewModel>()
 
     NavHost(
         navController = navController, 
         startDestination = "home"
     ) {
-        // 1. Home Screen
         composable("home") {
             val state by viewModel.animeListState.collectAsState()
             HomeScreen(
-                animeList = state,
+                animeState = state, // Renamed from animeList to match HomeScreen.kt
                 onAnimeClick = { animeId -> 
                     navController.navigate("detail/$animeId") 
                 },
@@ -38,11 +36,10 @@ fun App() {
             )
         }
 
-        // 2. Search Screen
         composable("search") {
             val searchResults by viewModel.searchResultsState.collectAsState()
             SearchScreen(
-                results = searchResults,
+                animeState = searchResults, // Pass state to the new SearchScreen
                 onQueryChange = { query -> viewModel.searchAnime(query) },
                 onAnimeClick = { animeId -> 
                     navController.navigate("detail/$animeId") 
@@ -50,17 +47,18 @@ fun App() {
             )
         }
 
-        // 3. Detail Screen (with Argument)
         composable(
             route = "detail/{animeId}",
             arguments = listOf(navArgument("animeId") { type = NavType.StringType })
         ) { backStackEntry ->
             val animeId = backStackEntry.arguments?.getString("animeId")
-            // Fetch the specific anime details from state or repo
             val anime = viewModel.getAnimeById(animeId) 
             
             anime?.let {
-                DetailScreen(anime = it)
+                DetailScreen(
+                    anime = it,
+                    onBackClick = { navController.popBackStack() } // Added missing back click
+                )
             }
         }
     }
