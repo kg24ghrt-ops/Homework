@@ -34,9 +34,7 @@ fun DetailScreen(
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent
-                )
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
             )
         }
     ) { paddingValues ->
@@ -45,77 +43,78 @@ fun DetailScreen(
                 .fillMaxSize()
                 .padding(bottom = paddingValues.calculateBottomPadding())
         ) {
-            // 1. Hero Header Section
-            item {
-                Box(modifier = Modifier.height(400.dp)) {
-                    AsyncImage(
-                        model = anime.imageUrl,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                    // Gradient overlay to make text readable
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(
-                                Brush.verticalGradient(
-                                    colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.8f)),
-                                    startY = 300f
-                                )
-                            )
-                    )
-                    Column(
-                        modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .padding(16.dp)
-                    ) {
-                        Text(
-                            text = anime.title,
-                            style = MaterialTheme.typography.headlineLarge,
-                            color = Color.White
-                        )
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            RatingRow(anime.rating)
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                text = "• ${anime.episodes.size} Episodes",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = Color.White.copy(alpha = 0.7f)
-                            )
-                        }
-                    }
-                }
-            }
-
-            // 2. Synopsis Section
-            item {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        text = "Synopsis",
-                        style = MaterialTheme.typography.titleLarge,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        text = anime.description,
-                        style = MaterialTheme.typography.bodyMedium,
-                        lineHeight = MaterialTheme.typography.bodyMedium.lineHeight * 1.2
-                    )
-                    Spacer(Modifier.height(24.dp))
-                    Divider(color = MaterialTheme.colorScheme.outlineVariant)
-                    Spacer(Modifier.height(16.dp))
-                    Text(
-                        text = "Episodes",
-                        style = MaterialTheme.typography.titleLarge
-                    )
-                }
-            }
-
-            // 3. Episodes List
+            item { AnimeHeroHeader(anime) }
+            item { AnimeSynopsisSection(anime) }
             items(anime.episodes) { episode ->
                 EpisodeItem(episode)
             }
         }
+    }
+}
+
+@Composable
+private fun AnimeHeroHeader(anime: Anime) {
+    Box(modifier = Modifier.height(400.dp)) {
+        AsyncImage(
+            model = anime.imageUrl,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize()
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.8f)),
+                        startY = 300f
+                    )
+                )
+        )
+        AnimeHeaderDetails(anime, Modifier.align(Alignment.BottomStart))
+    }
+}
+
+@Composable
+private fun AnimeHeaderDetails(anime: Anime, modifier: Modifier = Modifier) {
+    Column(modifier = modifier.padding(16.dp)) {
+        Text(
+            text = anime.title,
+            style = MaterialTheme.typography.headlineLarge,
+            color = Color.White
+        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            RatingRow(anime.rating)
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = "• ${anime.episodes.size} Episodes",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.White.copy(alpha = 0.7f)
+            )
+        }
+    }
+}
+
+@Composable
+private fun AnimeSynopsisSection(anime: Anime) {
+    Column(modifier = Modifier.padding(16.dp)) {
+        Text(
+            text = "Synopsis",
+            style = MaterialTheme.typography.titleLarge,
+            color = MaterialTheme.colorScheme.primary
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = anime.description,
+            style = MaterialTheme.typography.bodyMedium,
+            lineHeight = MaterialTheme.typography.bodyMedium.lineHeight * 1.2
+        )
+        Spacer(Modifier.height(24.dp))
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Spacer(Modifier.height(16.dp))
+        Text(
+            text = "Episodes",
+            style = MaterialTheme.typography.titleLarge
+        )
     }
 }

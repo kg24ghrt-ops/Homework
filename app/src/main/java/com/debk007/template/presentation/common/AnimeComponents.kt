@@ -19,6 +19,9 @@ import coil.compose.AsyncImage
 import com.debk007.template.model.Anime
 import com.debk007.template.model.Episode
 
+// Fixes [MagicNumber] error
+private const val GOLD_STARS_COLOR = 0xFFFFD700
+
 @Composable
 fun RatingRow(rating: Double, modifier: Modifier = Modifier) {
     Row(
@@ -28,7 +31,7 @@ fun RatingRow(rating: Double, modifier: Modifier = Modifier) {
         Icon(
             imageVector = Icons.Default.Star,
             contentDescription = null,
-            tint = Color(0xFFFFD700), // Gold color
+            tint = Color(GOLD_STARS_COLOR), // Constant used here
             modifier = Modifier.size(16.dp)
         )
         Spacer(Modifier.width(4.dp))
