@@ -1,0 +1,9 @@
+{
+  "id": "com.optimized.editor",
+  "name": "Ultra-Fast VS Editor",
+  "main": "main.js",
+  "version": "1.1.0",
+  "author": "Developer",
+  "description": "Tree-sitter style logic and Flat-List Project Tree.",
+  "icon": "icon.png"
+}

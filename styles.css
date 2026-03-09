@@ -1,0 +1,19 @@
+.super-tree-item {
+    display: flex;
+    align-items: center;
+    height: 30px;
+    padding: 0 10px;
+    cursor: pointer;
+    font-size: 13px;
+    color: #cccccc;
+    transform: translateZ(0); /* Hardware acceleration */
+}
+
+.super-tree-item:hover {
+    background: #2a2d2e;
+}
+
+.token-keyword { color: #569cd6; font-weight: bold; }
+.token-function { color: #dcdcaa; }
+.token-string { color: #ce9178; }
+.token-variable { color: #9cdcfe; }
