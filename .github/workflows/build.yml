@@ -3,44 +3,38 @@ name: Build and Package Acode Plugin
 on:
   push:
     branches: [ main ]
-    tags: [ 'v*' ] # Triggers when you push a version tag like v1.0.0
+    tags: [ 'v*' ]
+
+permissions:
+  contents: write  # Fixes the 403 error automatically
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # 1. Validate plugin.json structure
-      - name: Validate Manifest
+      - name: Package Plugin (Root Level Only)
         run: |
-          if [ ! -f plugin.json ]; then
-            echo "Error: plugin.json not found!"
-            exit 1
-          fi
-
-      # 2. Research-backed Optimization: Minify JS (Optional but recommended for speed)
-      # This makes the plugin load faster on Android devices.
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Package Plugin
-        run: |
-          # Create a dist folder
           mkdir dist
-          # Zip only the necessary files for Acode
-          zip -r dist/super-editor-plugin.zip main.js plugin.js styles.css icon.png readme.md
-          echo "Plugin packaged successfully."
+          # The -j flag "junks" the directory paths
+          # We explicitly list only the required files
+          zip -j dist/super-editor-plugin.zip \
+            main.js \
+            plugin.json \
+            styles.css \
+            icon.png \
+            readme.md
+          
+          echo "ZIP Content Check:"
+          unzip -l dist/super-editor-plugin.zip
 
-      # 3. Create a GitHub Release (If a tag is pushed)
-      - name: Release
+      - name: Create Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: dist/super-editor-plugin.zip
+          body: "Stable release of the Super Editor Plugin. Install by downloading the ZIP and selecting 'Local' in Acode."
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
