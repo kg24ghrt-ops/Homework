@@ -10,70 +10,124 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.meticha.jetpackboilerplate.ui.BearingMode
+import com.meticha.jetpackboilerplate.ui.VectorViewModel
 import com.meticha.jetpackboilerplate.ui.theme.CommandCyan
 import com.meticha.jetpackboilerplate.ui.theme.RadarGreen
 
 @Composable
 fun QuickEntryBar(
-    onAdd: (Double, Double) -> Unit,
+    viewModel: VectorViewModel, // Pass the ViewModel to control BearingMode
     onReset: () -> Unit
 ) {
     var magnitude by remember { mutableStateOf("") }
     var bearing by remember { mutableStateOf("") }
 
     Surface(
-        color = Color(0xFF1C2227), // PanelGrey
-        tonalElevation = 8.dp
+        color = Color(0xFF12171D), // Deep tactical background
+        tonalElevation = 12.dp,
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(0.1f))
     ) {
-        Row(
+        Column(
             modifier = Modifier
-                .padding(16.dp)
+                .padding(12.dp)
+                .navigationBarsPadding()
                 .fillMaxWidth()
-                .navigationBarsPadding(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // Magnitude Input
-            OutlinedTextField(
-                value = magnitude,
-                onValueChange = { magnitude = it },
-                label = { Text("DIST", style = MaterialTheme.typography.labelSmall) },
-                modifier = Modifier.weight(1f),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = CommandCyan)
-            )
-
-            // Bearing Input
-            OutlinedTextField(
-                value = bearing,
-                onValueChange = { bearing = it },
-                label = { Text("BRNG°", style = MaterialTheme.typography.labelSmall) },
-                modifier = Modifier.weight(1f),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = CommandCyan)
-            )
-
-            // Deploy Vector Button
-            IconButton(
-                onClick = {
-                    val mag = magnitude.toDoubleOrNull() ?: 0.0
-                    val brng = bearing.toDoubleOrNull() ?: 0.0
-                    if (mag > 0) {
-                        onAdd(mag, brng)
-                        magnitude = "" // Clear for next entry
-                        bearing = ""
-                    }
-                },
-                colors = IconButtonDefaults.iconButtonColors(containerColor = CommandCyan)
+            // 1. THE SHORTCUT ROW: Fast Quadrant Entry
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Icon(Icons.Default.Add, contentDescription = "Deploy", tint = Color.Black)
+                BearingMode.entries.forEach { mode ->
+                    val isSelected = viewModel.currentBearingMode == mode
+                    InputChip(
+                        selected = isSelected,
+                        onClick = { viewModel.setBearingMode(mode) },
+                        label = { 
+                            Text(
+                                mode.name, 
+                                fontSize = 10.sp, 
+                                fontWeight = FontWeight.Bold
+                            ) 
+                        },
+                        colors = InputChipDefaults.inputChipColors(
+                            selectedContainerColor = RadarGreen,
+                            selectedLabelColor = Color.Black,
+                            containerColor = Color(0xFF1A1F26),
+                            labelColor = CommandCyan
+                        ),
+                        modifier = Modifier.weight(1f)
+                    )
+                }
             }
 
-            // System Reset
-            IconButton(onClick = onReset) {
-                Icon(Icons.Default.Refresh, contentDescription = "Reset", tint = Color.Gray)
+            // 2. INPUT ROW: Distance, Bearing, and Action
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // Magnitude Input
+                OutlinedTextField(
+                    value = magnitude,
+                    onValueChange = { if (it.length <= 6) magnitude = it },
+                    label = { Text("DISTANCE", style = MaterialTheme.typography.labelSmall) },
+                    modifier = Modifier.weight(1.2f),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = CommandCyan,
+                        unfocusedBorderColor = Color.Gray.copy(0.4f)
+                    )
+                )
+
+                // Bearing Input
+                OutlinedTextField(
+                    value = bearing,
+                    onValueChange = { if (it.length <= 3) bearing = it },
+                    label = { Text("ANGLE°", style = MaterialTheme.typography.labelSmall) },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    placeholder = { Text("0-360", fontSize = 10.sp) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = if (viewModel.currentBearingMode == BearingMode.DIRECT) CommandCyan else RadarGreen,
+                        unfocusedBorderColor = Color.Gray.copy(0.4f)
+                    )
+                )
+
+                // Deploy Button
+                Button(
+                    onClick = {
+                        val mag = magnitude.toDoubleOrNull()
+                        val brng = bearing.toDoubleOrNull()
+                        if (mag != null && brng != null) {
+                            viewModel.addVector(mag, brng)
+                            magnitude = ""
+                            bearing = ""
+                        }
+                    },
+                    modifier = Modifier.height(56.dp),
+                    shape = MaterialTheme.shapes.medium,
+                    colors = ButtonDefaults.buttonColors(containerColor = CommandCyan),
+                    contentPadding = PaddingValues(0.dp)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "Add", tint = Color.Black)
+                }
+
+                // Reset Button
+                IconButton(
+                    onClick = onReset,
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Icon(Icons.Default.Refresh, contentDescription = "Reset", tint = Color.Gray)
+                }
             }
         }
     }
