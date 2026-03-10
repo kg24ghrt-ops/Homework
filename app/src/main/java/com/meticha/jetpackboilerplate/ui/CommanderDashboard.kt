@@ -3,7 +3,8 @@ package com.meticha.jetpackboilerplate.ui
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.* import androidx.compose.runtime.getValue 
+import androidx.compose.runtime.*
+import androidx.compose.runtime.getValue 
 import androidx.compose.runtime.setValue 
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -59,8 +60,9 @@ fun CommanderDashboard(viewModel: VectorViewModel) {
                 color = Color(0xFF12171D),
                 shadowElevation = 10.dp
             ) {
+                // FIXED LINE: Passing the viewModel directly
                 QuickEntryBar(
-                    onAdd = { mag, brng -> viewModel.addVector(mag, brng) },
+                    viewModel = viewModel,
                     onReset = { viewModel.clearSystem() }
                 )
             }
@@ -71,14 +73,13 @@ fun CommanderDashboard(viewModel: VectorViewModel) {
                 .padding(innerPadding)
                 .fillMaxSize()
         ) {
-            // THE VIEWPORT
             TacticalViewport(
                 path = path,
                 selectedUnit = currentUnit, 
                 modifier = Modifier.fillMaxSize()
             )
 
-            // TOP RIGHT CONTROLS
+            // Top Right Overlay Controls
             Column(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
@@ -86,16 +87,10 @@ fun CommanderDashboard(viewModel: VectorViewModel) {
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 horizontalAlignment = Alignment.End
             ) {
-                // --- THE "TEXTBOOK MODE" SWITCH ---
+                // Textbook Mode Switch
                 Surface(
                     color = Color(0xFF1A1F26).copy(alpha = 0.8f),
-                    shape = MaterialTheme.shapes.medium,
-                    border = FilterChipDefaults.filterChipBorder(
-                        enabled = true,
-                        selected = viewModel.isTextbookMode,
-                        borderColor = Color.Gray.copy(alpha = 0.3f),
-                        selectedBorderColor = RadarGreen
-                    )
+                    shape = MaterialTheme.shapes.medium
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
@@ -110,44 +105,17 @@ fun CommanderDashboard(viewModel: VectorViewModel) {
                         Switch(
                             checked = viewModel.isTextbookMode,
                             onCheckedChange = { viewModel.toggleTextbookMode() },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = Color.Black,
-                                checkedTrackColor = RadarGreen,
-                                uncheckedThumbColor = Color.Gray,
-                                uncheckedTrackColor = Color.DarkGray
-                            ),
-                            // Scaling down the switch to keep it "Tactical" and small
                             modifier = Modifier.size(width = 40.dp, height = 24.dp)
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // UNIT SELECTOR CHIPS
+                // Unit Selector
                 MeasurementUnit.entries.forEach { unit ->
                     FilterChip(
                         selected = currentUnit == unit,
                         onClick = { viewModel.setUnit(unit) },
-                        label = { 
-                            Text(
-                                text = unit.suffix.uppercase(), 
-                                style = MaterialTheme.typography.labelLarge 
-                            ) 
-                        },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = RadarGreen,
-                            selectedLabelColor = Color.Black,
-                            containerColor = Color(0xFF1A1F26).copy(alpha = 0.8f),
-                            labelColor = Color.White
-                        ),
-                        border = FilterChipDefaults.filterChipBorder(
-                            enabled = true,
-                            selected = currentUnit == unit,
-                            borderColor = Color.Gray.copy(alpha = 0.3f),
-                            selectedBorderColor = RadarGreen,
-                            borderWidth = 1.dp
-                        )
+                        label = { Text(unit.suffix.uppercase()) }
                     )
                 }
             }
