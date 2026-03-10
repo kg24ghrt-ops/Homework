@@ -10,8 +10,18 @@ plugins {
 
 android {
     namespace = "com.meticha.jetpackboilerplate"
-    // Keep your SDK 36 for the "Old Republic" latest build
     compileSdk = 36
+
+    // --- FIRE: PERSISTENT SIGNING CONFIG ---
+    // This uses the debug.keystore you generated so fingerprints match every time
+    signingConfigs {
+        create("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
 
     defaultConfig {
         applicationId = "com.meticha.jetpackboilerplate"
@@ -24,6 +34,10 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Link the signing config here
+            signingConfig = signingConfigs.getByName("debug")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(
@@ -32,6 +46,7 @@ android {
             )
         }
     }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
@@ -59,8 +74,7 @@ dependencies {
     implementation(libs.androidx.material3)
     implementation(libs.androidx.material.icons.extended)
 
-    // THE YELLOW FIRE: The missing piece for the 'viewModel()' function
-    // We add this directly because it's missing from your 'libs' catalog
+    // Lifecycle/ViewModel bridge
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
 
     // --- HILT & NAVIGATION 3 ---
