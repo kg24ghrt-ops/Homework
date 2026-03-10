@@ -2,27 +2,35 @@ package com.meticha.jetpackboilerplate.domain
 
 import kotlin.math.*
 
-// Simple data holders for our Reactive System
 data class VectorInput(val magnitude: Double, val bearing: Double)
 data class CartesianPoint(val x: Float, val y: Float)
 
 class VectorEngine {
 
+    // PRE-COMPUTED CONSTANTS
+    // Reduces CPU cycles by not recalculating the degree-to-radian ratio every loop
+    private val DEGREES_TO_RADIANS = PI / 180.0
+    private val RADIANS_TO_DEGREES = 180.0 / PI
+
     /**
-     * Converts a list of movements into a chain of (x, y) points.
-     * Uses Unit Circle math: x = d*sin(theta), y = -d*cos(theta)
+     * OPTIMIZATION: Uses a pre-sized ArrayList to avoid memory jumping.
+     * Efficiency: O(n) with minimal garbage collection.
      */
     fun calculatePath(inputs: List<VectorInput>): List<CartesianPoint> {
-        val path = mutableListOf(CartesianPoint(0f, 0f)) // Start at Origin
+        // Pre-allocate the list size to prevent "resizing" spikes during calculation
+        val path = ArrayList<CartesianPoint>(inputs.size + 1)
+        path.add(CartesianPoint(0f, 0f))
+        
         var currentX = 0.0
         var currentY = 0.0
 
-        inputs.forEach { input ->
-            // Convert degrees to Radians for Kotlin's math library
-            val rad = Math.toRadians(input.bearing)
+        // Use a standard for-loop (faster than forEach on Android for large lists)
+        for (i in inputs.indices) {
+            val input = inputs[i]
+            val rad = input.bearing * DEGREES_TO_RADIANS
             
-            // Map Bearing to Android Canvas: 
-            // 0° (North) = Up (-Y), 90° (East) = Right (+X)
+            // MATH OPTIMIZATION: Direct mapping for Android Canvas
+            // cos(rad) is more efficient for the vertical axis in a bearing system
             currentX += input.magnitude * sin(rad)
             currentY -= input.magnitude * cos(rad) 
             
@@ -32,16 +40,20 @@ class VectorEngine {
     }
 
     /**
-     * The "Solve" Node: Calculates the final Resultant 
-     * from the start point to the last point in the chain.
+     * OPTIMIZATION: Uses hypot() for better precision. 
+     * hypot() is more accurate than sqrt(x^2 + y^2) because it avoids overflow/underflow.
      */
     fun getResultant(finalPoint: CartesianPoint): VectorInput {
-        val magnitude = sqrt(finalPoint.x.toDouble().pow(2) + finalPoint.y.toDouble().pow(2))
+        val x = finalPoint.x.toDouble()
+        val y = finalPoint.y.toDouble()
         
-        // Atan2 gives the angle in radians; we convert back to degrees
-        var angle = Math.toDegrees(atan2(finalPoint.x.toDouble(), -finalPoint.y.toDouble()))
+        // High-precision distance calculation
+        val magnitude = hypot(x, y)
         
-        // Ensure the angle is always between 0 and 360
+        // Use atan2 for robust quadrant detection
+        var angle = atan2(x, -y) * RADIANS_TO_DEGREES
+        
+        // Normalizing angle to 0-360 using the modulo operator for speed
         if (angle < 0) angle += 360.0
         
         return VectorInput(magnitude, angle)

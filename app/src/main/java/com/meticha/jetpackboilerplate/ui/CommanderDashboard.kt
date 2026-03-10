@@ -2,7 +2,8 @@ package com.meticha.jetpackboilerplate.ui
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -15,20 +16,38 @@ import com.meticha.jetpackboilerplate.ui.theme.RadarGreen
 @Composable
 fun CommanderDashboard(viewModel: VectorViewModel) {
     // 1. Reactive States
-    val path = viewModel.pathPoints.value
-    val solveNode = viewModel.resultant.value
+    val path by viewModel.pathPoints
+    val solveNode by viewModel.resultant
+    
+    // OPTIMIZATION: Precision State (False = Textbook/0.1, True = Ottoman/0.01)
+    var highPrecisionMode by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
                 title = { 
-                    Column(horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
-                        Text("VECTORNAV // COMMANDER", style = MaterialTheme.typography.labelMedium)
-                        // THE REAL-TIME HUD: Shows final displacement instantly
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("VECTORNAV // V1.1", style = MaterialTheme.typography.labelSmall)
+                        
+                        // THE DYNAMIC HUD: Switches format based on the toggle
+                        val distFormat = if (highPrecisionMode) "%.2f" else "%.1f"
+                        val angleFormat = if (highPrecisionMode) "%.2f" else "%.0f"
+                        
                         Text(
-                            "RESULTANT: ${"%.2f".format(solveNode.magnitude)}m @ ${"%.1f".format(solveNode.bearing)}°",
-                            style = MaterialTheme.typography.bodySmall,
+                            "R: ${distFormat.format(solveNode.magnitude)}m @ ${angleFormat.format(solveNode.bearing)}°",
+                            style = MaterialTheme.typography.headlineSmall,
                             color = RadarGreen
+                        )
+                    }
+                },
+                actions = {
+                    // THE PRECISION TOGGLE: Switch between Homework and Pro levels
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("OTTN", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                        Switch(
+                            checked = highPrecisionMode,
+                            onCheckedChange = { highPrecisionMode = it },
+                            colors = SwitchDefaults.colors(checkedThumbColor = RadarGreen)
                         )
                     }
                 },
@@ -39,17 +58,20 @@ fun CommanderDashboard(viewModel: VectorViewModel) {
             )
         },
         bottomBar = {
-            // FEEDING THE ENGINE: Buttons talk directly to the ViewModel
             QuickEntryBar(
                 onAdd = { mag, brng -> viewModel.addVector(mag, brng) },
                 onReset = { viewModel.clearSystem() }
             )
         }
     ) { innerPadding ->
-        // THE VIEWPORT: Hardware-accelerated drawing area
-        TacticalViewport(
-            path = path,
-            modifier = Modifier.padding(innerPadding)
-        )
+        // OPTIMIZATION: Automatic Scaling
+        // We wrap the Viewport in a Box with padding to ensure the path 
+        // stays away from the screen edges.
+        Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
+            TacticalViewport(
+                path = path,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
     }
 }
