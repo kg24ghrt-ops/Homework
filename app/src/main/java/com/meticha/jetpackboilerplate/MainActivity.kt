@@ -4,7 +4,8 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.viewmodel.compose.viewModel
+// CORRECTED IMPORT:
+import androidx.lifecycle.viewmodel.compose.viewModel 
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
@@ -19,22 +20,17 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // 1. Enable Edge-to-Edge for that modern "Full Screen" tactical look
         enableEdgeToEdge()
         
         setContent {
-            // 2. Initialize the ViewModel (The Brain)
-            // This stays alive even if the screen rotates
+            // This call now links correctly to the lifecycle-viewmodel-compose library
             val vViewModel: VectorViewModel = viewModel()
             
-            // 3. Apply our Tactical Theme (Fire #1)
             CallBudyTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = CommandBlack // Force deep space black
+                    color = CommandBlack 
                 ) {
-                    // 4. Inject the Dashboard (The Interface)
-                    // We pass the ViewModel directly so it can control the UI
                     CommanderDashboard(viewModel = vViewModel)
                 }
             }
