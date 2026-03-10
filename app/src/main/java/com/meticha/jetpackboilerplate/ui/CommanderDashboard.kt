@@ -3,7 +3,9 @@ package com.meticha.jetpackboilerplate.ui
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.runtime.* // Crucial for 'by' delegates
+import androidx.compose.runtime.getValue // THE MISSING PIECE 1
+import androidx.compose.runtime.setValue // THE MISSING PIECE 2
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -18,9 +20,10 @@ import com.meticha.jetpackboilerplate.ui.theme.RadarGreen
 @Composable
 fun CommanderDashboard(viewModel: VectorViewModel) {
     // Collect states using 'by' for cleaner syntax
+    // These require the 'getValue' and 'setValue' imports above
     val path by viewModel.pathPoints
     val displayResult by viewModel.displayResultant 
-    val currentUnit by viewModel.selectedUnit // Assumes State<MeasurementUnit> in VM
+    val currentUnit = viewModel.selectedUnit 
 
     Scaffold(
         containerColor = Color(0xFF0A0E12),
@@ -34,25 +37,30 @@ fun CommanderDashboard(viewModel: VectorViewModel) {
                             color = CommandCyan.copy(alpha = 0.6f)
                         )
                         
-                        // AnimatedContent makes the result "pop" when it changes
                         AnimatedContent(targetState = displayResult, label = "ResultUpdate") { result ->
                             Text(
                                 text = result,
-                                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                                style = MaterialTheme.typography.headlineSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.dp
+                                ),
                                 color = RadarGreen
                             )
                         }
                     }
                 },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = Color.Transparent, // Makes the viewport bleed into the status bar
+                    containerColor = Color.Transparent, 
                     titleContentColor = CommandCyan
                 )
             )
         },
         bottomBar = {
-            // Surface wrapper to give the bar a distinct "Control Panel" feel
-            Surface(tonalElevation = 8.dp, color = Color(0xFF12171D)) {
+            Surface(
+                tonalElevation = 8.dp, 
+                color = Color(0xFF12171D),
+                shadowElevation = 10.dp
+            ) {
                 QuickEntryBar(
                     onAdd = { mag, brng -> viewModel.addVector(mag, brng) },
                     onReset = { viewModel.clearSystem() }
@@ -72,7 +80,7 @@ fun CommanderDashboard(viewModel: VectorViewModel) {
                 modifier = Modifier.fillMaxSize()
             )
 
-            // OPTIMIZATION: Floating Unit Selector (Less cluttered than TopBar)
+            // OPTIMIZATION: Floating Unit Selector (Top Right Overlay)
             Column(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
@@ -83,18 +91,24 @@ fun CommanderDashboard(viewModel: VectorViewModel) {
                     FilterChip(
                         selected = currentUnit == unit,
                         onClick = { viewModel.setUnit(unit) },
-                        label = { Text(unit.label, style = MaterialTheme.typography.labelMedium) },
+                        label = { 
+                            Text(
+                                text = unit.suffix.uppercase(), 
+                                style = MaterialTheme.typography.labelLarge 
+                            ) 
+                        },
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = RadarGreen,
                             selectedLabelColor = Color.Black,
-                            containerColor = Color(0xFF1A1F26),
+                            containerColor = Color(0xFF1A1F26).copy(alpha = 0.8f),
                             labelColor = Color.White
                         ),
                         border = FilterChipDefaults.filterChipBorder(
                             enabled = true,
                             selected = currentUnit == unit,
-                            borderColor = Color.Gray.copy(alpha = 0.5f),
-                            selectedBorderColor = RadarGreen
+                            borderColor = Color.Gray.copy(alpha = 0.3f),
+                            selectedBorderColor = RadarGreen,
+                            borderWidth = 1.dp
                         )
                     )
                 }
