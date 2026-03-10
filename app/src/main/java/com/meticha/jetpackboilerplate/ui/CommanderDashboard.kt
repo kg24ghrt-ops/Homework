@@ -15,6 +15,8 @@ import com.meticha.jetpackboilerplate.ui.components.QuickEntryBar
 import com.meticha.jetpackboilerplate.ui.components.TacticalViewport
 import com.meticha.jetpackboilerplate.ui.theme.CommandCyan
 import com.meticha.jetpackboilerplate.ui.theme.RadarGreen
+import androidx.compose.ui.unit.sp
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -42,7 +44,7 @@ fun CommanderDashboard(viewModel: VectorViewModel) {
                                 text = result,
                                 style = MaterialTheme.typography.headlineSmall.copy(
                                     fontWeight = FontWeight.Bold,
-                                    letterSpacing = 1.dp
+                                    letterSpacing = 1.sp
                                 ),
                                 color = RadarGreen
                             )
