@@ -12,10 +12,10 @@ android {
     namespace = "com.meticha.jetpackboilerplate"
     compileSdk = 36
 
-    // --- FIRE: PERSISTENT SIGNING CONFIG ---
-    // This uses the debug.keystore you generated so fingerprints match every time
+    // --- FIXED: PERSISTENT SIGNING CONFIG ---
     signingConfigs {
-        create("debug") {
+        // Use 'getByName' instead of 'create' to avoid the duplicate name error
+        getByName("debug") {
             storeFile = file("debug.keystore")
             storePassword = "android"
             keyAlias = "androiddebugkey"
@@ -35,7 +35,7 @@ android {
 
     buildTypes {
         debug {
-            // Link the signing config here
+            // Link the config we just modified above
             signingConfig = signingConfigs.getByName("debug")
         }
         release {
