@@ -13,11 +13,13 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 import com.meticha.jetpackboilerplate.domain.CartesianPoint
+import com.meticha.jetpackboilerplate.ui.MeasurementUnit // IMPORT ADDED
 import com.meticha.jetpackboilerplate.ui.theme.*
 
 @Composable
 fun TacticalViewport(
     path: List<CartesianPoint>,
+    selectedUnit: MeasurementUnit = MeasurementUnit.MILES, // PARAMETER ADDED
     modifier: Modifier = Modifier
 ) {
     // 1. CALCULATE BOUNDS & SCALE (Memoized to prevent jitter)
@@ -65,6 +67,7 @@ fun TacticalViewport(
                 center = Offset(centerOffset.x + point.x * scale, centerOffset.y + point.y * scale)
             )
         }
+        
         // Draw the Origin Node (Village P) in Alert Orange
         drawCircle(
             color = AlertOrange,
