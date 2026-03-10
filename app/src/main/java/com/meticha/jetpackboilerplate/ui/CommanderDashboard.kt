@@ -15,40 +15,41 @@ import com.meticha.jetpackboilerplate.ui.theme.RadarGreen
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CommanderDashboard(viewModel: VectorViewModel) {
-    // 1. Reactive States
+    // 1. REACTIVE STATES (Synced with the new ViewModel)
     val path by viewModel.pathPoints
-    val solveNode by viewModel.resultant
-    
-    // OPTIMIZATION: Precision State (False = Textbook/0.1, True = Ottoman/0.01)
-    var highPrecisionMode by remember { mutableStateOf(false) }
+    val displayResult by viewModel.displayResultant 
+    val currentUnit = viewModel.selectedUnit
 
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
                 title = { 
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("VECTORNAV // V1.1", style = MaterialTheme.typography.labelSmall)
+                        Text("VECTORNAV // AUGUST", style = MaterialTheme.typography.labelSmall)
                         
-                        // THE DYNAMIC HUD: Switches format based on the toggle
-                        val distFormat = if (highPrecisionMode) "%.2f" else "%.1f"
-                        val angleFormat = if (highPrecisionMode) "%.2f" else "%.0f"
-                        
+                        // THE DYNAMIC HUD: Now uses the ViewModel's measurement engine
                         Text(
-                            "R: ${distFormat.format(solveNode.magnitude)}m @ ${angleFormat.format(solveNode.bearing)}°",
+                            text = displayResult,
                             style = MaterialTheme.typography.headlineSmall,
                             color = RadarGreen
                         )
                     }
                 },
+                // ACTION: Added Unit Selection right in the top bar for pro access
                 actions = {
-                    // THE PRECISION TOGGLE: Switch between Homework and Pro levels
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("OTTN", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
-                        Switch(
-                            checked = highPrecisionMode,
-                            onCheckedChange = { highPrecisionMode = it },
-                            colors = SwitchDefaults.colors(checkedThumbColor = RadarGreen)
-                        )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        MeasurementUnit.entries.forEach { unit ->
+                            InputChip(
+                                selected = currentUnit == unit,
+                                onClick = { viewModel.setUnit(unit) },
+                                label = { Text(unit.suffix) },
+                                modifier = Modifier.padding(horizontal = 2.dp),
+                                colors = InputChipDefaults.inputChipColors(
+                                    selectedContainerColor = RadarGreen,
+                                    labelColor = Color.White
+                                )
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
@@ -64,12 +65,11 @@ fun CommanderDashboard(viewModel: VectorViewModel) {
             )
         }
     ) { innerPadding ->
-        // OPTIMIZATION: Automatic Scaling
-        // We wrap the Viewport in a Box with padding to ensure the path 
-        // stays away from the screen edges.
         Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
             TacticalViewport(
                 path = path,
+                // Passing the unit to the viewport allows for scale-aware drawing
+                selectedUnit = currentUnit, 
                 modifier = Modifier.fillMaxSize()
             )
         }
