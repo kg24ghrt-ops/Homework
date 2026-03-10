@@ -4,7 +4,6 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
@@ -13,64 +12,76 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 import com.meticha.jetpackboilerplate.domain.CartesianPoint
-import com.meticha.jetpackboilerplate.ui.theme.CommandCyan
-import com.meticha.jetpackboilerplate.ui.theme.AlertOrange
-import com.meticha.jetpackboilerplate.ui.theme.CommandBlack
+import com.meticha.jetpackboilerplate.ui.theme.*
 
 @Composable
 fun TacticalViewport(
     path: List<CartesianPoint>,
     modifier: Modifier = Modifier
 ) {
-    // OPTIMIZATION 1: Path Memoization
-    // Instead of looping every frame, we build the "Drawing Instruction" once.
-    // The GPU can draw a Path significantly faster than individual lines.
-    val cachedPath = remember(path) {
-        Path().apply {
-            if (path.isNotEmpty()) {
-                moveTo(path[0].x, path[0].y)
-                for (i in 1 until path.size) {
-                    lineTo(path[i].x, path[i].y)
-                }
-            }
-        }
-    }
-
     Canvas(
         modifier = modifier
             .fillMaxSize()
             .background(CommandBlack)
     ) {
-        val strokePx = 3.dp.toPx()
-        val nodeRadius = 4.dp.toPx()
+        if (path.isEmpty()) return@Canvas
 
-        // 1. Draw the Vector Chain (Single GPU Call)
-        drawPath(
-            path = cachedPath,
-            color = CommandCyan,
-            style = Stroke(width = strokePx, cap = StrokeCap.Round)
+        // 1. CALCULATE THE "WORLD BOUNDS" (The professional way)
+        // We find the smallest and largest X/Y to determine the map's size
+        val allPoints = path + CartesianPoint(0f, 0f) // Always include the start point
+        val minX = allPoints.minOf { it.x }
+        val maxX = allPoints.maxOf { it.x }
+        val minY = allPoints.minOf { it.y }
+        val maxY = allPoints.maxOf { it.y }
+
+        val worldWidth = (maxX - minX).coerceAtLeast(0.1f)
+        val worldHeight = (maxY - minY).coerceAtLeast(0.1f)
+
+        // 2. ASPECT-RATIO FITTING
+        // We leave a 15% margin so lines don't hit the screen edge
+        val scale = minOf(
+            size.width * 0.85f / worldWidth,
+            size.height * 0.85f / worldHeight
+        ).coerceIn(1f, 1000f)
+
+        // 3. THE CAMERA TRANSFORM (Translation)
+        // This centers the "Village Cluster" in the middle of your phone
+        val centerOffset = Offset(
+            size.width / 2f - ((minX + maxX) / 2f) * scale,
+            size.height / 2f - ((minY + maxY) / 2f) * scale
         )
 
-        // 2. Draw Nodes (Optimization: Only draw start and end to reduce clutter)
-        if (path.isNotEmpty()) {
-            path.forEach { point ->
-                drawCircle(
-                    color = CommandCyan,
-                    radius = nodeRadius,
-                    center = Offset(point.x, point.y)
+        // 4. RENDERING THE VECTOR CHAIN
+        val vectorPath = Path().apply {
+            moveTo(
+                centerOffset.x + path[0].x * scale, 
+                centerOffset.y + path[0].y * scale
+            )
+            for (i in 1 until path.size) {
+                lineTo(
+                    centerOffset.x + path[i].x * scale, 
+                    centerOffset.y + path[i].y * scale
                 )
             }
         }
 
-        // 3. The "Solve" Node (Resultant)
-        if (path.size > 1) {
+        drawPath(
+            path = vectorPath,
+            color = CommandCyan,
+            style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
+        )
+
+        // 5. THE "RESULTANT" (The professional solved vector)
+        if (path.size >= 1) {
             val finalPoint = path.last()
             drawLine(
                 color = AlertOrange,
-                start = Offset(0f, 0f),
-                end = Offset(finalPoint.x, finalPoint.y),
+                start = centerOffset, // The centered (0,0)
+                end = Offset(
+                    centerOffset.x + finalPoint.x * scale, 
+                    centerOffset.y + finalPoint.y * scale
+                ),
                 strokeWidth = 2.dp.toPx(),
-                // Optimization: Pre-allocate floatArray for the dash effect outside if possible
                 pathEffect = PathEffect.dashPathEffect(floatArrayOf(20f, 10f))
             )
         }
