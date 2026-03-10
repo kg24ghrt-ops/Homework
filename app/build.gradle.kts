@@ -10,6 +10,7 @@ plugins {
 
 android {
     namespace = "com.meticha.jetpackboilerplate"
+    // Keep your SDK 36 for the "Old Republic" latest build
     compileSdk = 36
 
     defaultConfig {
@@ -47,7 +48,7 @@ kotlin {
 }
 
 dependencies {
-
+    // --- STANDARD COMPOSE STACK ---
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
@@ -58,21 +59,26 @@ dependencies {
     implementation(libs.androidx.material3)
     implementation(libs.androidx.material.icons.extended)
 
-    // Hilt dependencies
+    // THE YELLOW FIRE: The missing piece for the 'viewModel()' function
+    // We add this directly because it's missing from your 'libs' catalog
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
+
+    // --- HILT & NAVIGATION 3 ---
     implementation(libs.hilt.android)
     implementation(libs.hilt.navigation.compose)
     implementation(libs.androidx.lifecycle.viewmodel.navigation3.android)
     ksp(libs.hilt.compiler)
 
-    // Navigation Compose
     implementation(libs.androidx.material3.navigation3)
     implementation(libs.androidx.navigation3.runtime)
     implementation(libs.androidx.navigation3.ui)
     implementation(libs.androidx.lifecycle.viewmodel.navigation3)
 
+    // --- SERIALIZATION ---
     implementation(libs.kotlinx.serialization.core)
     implementation(libs.kotlinx.serialization.json)
 
+    // --- TESTING ---
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
