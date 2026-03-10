@@ -5,60 +5,61 @@ import androidx.lifecycle.ViewModel
 import com.meticha.jetpackboilerplate.domain.VectorEngine
 import com.meticha.jetpackboilerplate.domain.VectorInput
 import com.meticha.jetpackboilerplate.domain.CartesianPoint
-
-// 1. DEFINE THE MEASUREMENT STANDARDS
-enum class MeasurementUnit(val suffix: String, val factor: Double) {
-    MILES("mi", 1.0),
-    METERS("m", 1609.34),
-    KILOMETERS("km", 1.60934),
-    FEET("ft", 5280.0)
-}
+import java.util.Locale
 
 class VectorViewModel : ViewModel() {
-    private val engine by lazy { VectorEngine() }
+    private val engine = VectorEngine()
 
-    // --- NEW: UNIT STATE ---
-    var selectedUnit by mutableStateOf(MeasurementUnit.MILES)
+    // --- HUD STATES ---
+    // Defaulting to CM for Version 4.0 as requested
+    var selectedUnit by mutableStateOf(MeasurementUnit.CENTIMETERS)
         private set
 
-    val vectorList = mutableStateListOf<VectorInput>()
+    private val _vectorList = mutableStateListOf<VectorInput>()
+    val vectorList: List<VectorInput> = _vectorList
 
-    // --- CALCULATIONS ---
-    val pathPoints: State<List<CartesianPoint>> = derivedStateOf {
-        engine.calculatePath(vectorList)
+    // --- OPTIMIZED PIPELINE ---
+    // derivedStateOf prevents unnecessary recalculations during UI recomposition
+    val pathPoints = derivedStateOf { 
+        engine.calculatePath(_vectorList) 
     }
 
-    /** * HUD: The Resultant with Unit Conversion
-     * This automatically scales the distance based on the selected unit!
-     */
-    val displayResultant: State<String> = derivedStateOf {
+    val displayResultant = derivedStateOf {
+        if (_vectorList.isEmpty()) return@derivedStateOf "AWAITING DATA"
+        
         val lastPoint = pathPoints.value.lastOrNull() ?: CartesianPoint(0f, 0f)
         val res = engine.getResultant(lastPoint)
         
-        val convertedDist = res.magnitude * selectedUnit.factor
-        val unitSuffix = selectedUnit.suffix
+        // Accurate conversion: (Miles -> Meters -> Target Unit)
+        val distInMeters = res.magnitude * MeasurementUnit.MILES.toMeters
+        val convertedDist = distInMeters / selectedUnit.toMeters
         
-        // Formats to 2 decimal places for precision
-        "%.2f %s @ %.1f°".format(convertedDist, unitSuffix, res.bearing)
+        String.format(
+            Locale.US, 
+            "%.2f %s @ %.1f°", 
+            convertedDist, 
+            selectedUnit.suffix, 
+            res.bearing
+        )
     }
 
     // --- COMMANDS ---
+    fun addVector(mag: Double?, brng: Double?) {
+        // Validation: Only add if magnitude is valid and positive
+        if (mag != null && brng != null && mag > 0) {
+            _vectorList.add(VectorInput(mag, brng))
+        }
+    }
 
     fun setUnit(unit: MeasurementUnit) {
         selectedUnit = unit
     }
 
-    fun addVector(magnitude: Double, bearing: Double) {
-        if (magnitude > 0.0 && !magnitude.isNaN() && !bearing.isNaN()) {
-            vectorList.add(VectorInput(magnitude, bearing))
-        }
-    }
-
-    fun undo() {
-        if (vectorList.isNotEmpty()) vectorList.removeLast()
+    fun undoLast() {
+        if (_vectorList.isNotEmpty()) _vectorList.removeAt(_vectorList.size - 1)
     }
 
     fun clearSystem() {
-        vectorList.clear()
+        _vectorList.clear()
     }
 }

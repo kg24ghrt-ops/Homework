@@ -1,88 +1,31 @@
-# Jetpack Boilerplate
-
-![banner.png](banner.png)
-
-A minimal boilerplate project designed to kickstart new Android application development. This boilerplate is pre-configured with a modern tech stack, including Hilt for dependency injection, Jetpack Navigation 3, and an **alpha version of Compose BOM to explore the latest Material 3 expressive features**.
-
-## 🌟 Features
-
-*   **Minimal Setup:** Intentionally lean to provide a clean slate for your project.
-*   **Jetpack Compose:** Built with a modern declarative UI toolkit.
-*   **Material 3 Expressive (via Alpha Version):** Experiment with the latest Material Design 3 expressive features using an alpha version of Compose BOM.
-*   **Hilt:** For robust dependency injection.
-*   **Navigation 3:** For navigating between composable screens (leveraging the latest navigation patterns).
-*   **MVVM Architecture:** A foundational MVVM pattern to get you started.
-
-## 🛠️ Tech Stack & Libraries
-
-*   [Kotlin](https://kotlinlang.org/)
-*   [Jetpack Compose (Alpha version for Material 3 expressive features)](https://developer.android.com/jetpack/compose)
-*   [Hilt (for Dependency Injection)](https://developer.android.com/training/dependency-injection/hilt-android)
-*   [Navigation Compose](https://developer.android.com/guide/navigation/navigation-3)
-*   [AndroidX Libraries](https://developer.android.com/jetpack/androidx)
-
-## 🚀 Getting Started
-
-### Prerequisites
-
-*   Android Studio (latest stable version, or **consider using the latest Canary version of Android Studio for the best compatibility with alpha versions of Jetpack Compose**).
-
-### Installation
-
-1.  Clone the repository:
-    ```bash
-    git clone https://github.com/cavin-macwan/jetpack-boilerplate.git
-    ```
-2.  Open the project in Android Studio.
-3.  Let Android Studio sync the Gradle files and download the necessary dependencies.
-4.  Build and run the application on an emulator or a physical device.
-
-## 🏗️ Project Structure
-
-(Adjust this section if your actual structure differs significantly)
-```
-Jetpack Boilerplate/
-├── app/
-│   ├── src/
-│   │   ├── main/
-│   │   │   ├── java/com/meticha/jetpackboilerplate/  # Main application code
-│   │   │   │   ├── di/                               # Hilt dependency injection modules
-│   │   │   │   ├── navigation/                       # Navigation graph and setup
-│   │   │   │   ├── ui/                               # UI components (themes, composables)
-│   │   │   │   ├── feature/                          # Screens, ViewModels for specific features
-│   │   │   │   └── MyApplication.kt                  # Application class
-│   │   │   └── res/                                  # Resources (drawables, strings)
-│   │   └── AndroidManifest.xml
-│   └── build.gradle.kts                            # App-level Gradle file
-├── gradle/
-│   └── libs.versions.toml                          # Version catalog
-└── build.gradle.kts                                # Project-level Gradle file
-```
-
-## 🧑‍💻 Usage
-
-This project serves as a starting point. Key benefits include:
-*   **Rapid Prototyping:** Quickly test out new ideas with a modern Android setup.
-*   **Learning Resource:** Explore how Hilt, Navigation Compose, and Material 3 expressive features work together.
-*   **Foundation for New Apps:** Build upon this boilerplate by adding your unique features and business logic.
-
-You can extend it by:
-*   Adding new screens (Composables).
-*   Implementing new features and business logic.
-*   Updating dependencies in `gradle/libs.versions.toml` as new stable versions are released.
-
-## 🤝 Contributing
-
-Contributions are welcome! If you'd like to contribute, please follow these steps:
-1.  Fork the repository.
-2.  Create a new branch (`git checkout -b feature/your-feature-name`).
-3.  Make your changes.
-4.  Commit your changes (`git commit -m 'Add some feature'`).
-5.  Push to the branch (`git push origin feature/your-feature-name`).
-6.  Open a Pull Request.
-
-## 📝 License
-
-This project is licensed under the [MIT License](LICENSE.md) - see the [LICENSE.md](LICENSE.md) file for details.
-
----
+​VECTORNAV // AUGUST V1.1
+​Project Overview
+​A high-precision, tactical vector navigation tool designed for 8th-grade geometry and real-world bearing calculations. Built with Jetpack Compose, Material 3, and a custom IEEE 754 Math Engine.
+​1. The Core Engine Logic
+​The system uses a "World-to-Screen" transformation.
+​Base Unit: Miles (Internal Math).
+​Coordinate System: Bearing-to-Cartesian (North = 90^\circ, East = 0^\circ).
+​Optimizations: * hypot() for distance accuracy.
+​derivedStateOf to prevent UI lag.
+​Path memoization for smooth 60\text{ fps} viewport rendering.
+​2. Measurement System
+​The app supports instant translation between four major units:
+​Miles (mi): Standard textbook unit.
+​Meters (m): High-precision metric unit (1\text{ mi} = 1609.34\text{ m}).
+​Kilometers (km): Long-distance navigation.
+​Feet (ft): Granular local measurements.
+​3. The Village P Test Case
+​Use this data to verify your implementation:
+​Leg A: 6.0\text{ mi} at 90^\circ (North).
+​Leg B: 4.0\text{ mi} at 0^\circ (East).
+​Expected Resultant: * Distance: \approx 7.21\text{ mi} or 11,603\text{ m}.
+​Bearing: \approx 56.3^\circ (Northeast).
+​4. Deployment Instructions
+​To ensure the "Green Fire" success on GitHub Actions, the following files must be synced:
+​VectorEngine.kt (The Math).
+​VectorViewModel.kt (The State).
+​CommanderDashboard.kt (The UI Fix).
+​TacticalViewport.kt (The Canvas).
+​Next Strategic Objective
+​Your code is now mathematically "Elite." The only thing left to make your homework effortless is the Quick Direction Pad.
+​Would you like me to generate the code for a "N / S / E / W" button layout so you can enter angles with a single tap instead of typing them?
