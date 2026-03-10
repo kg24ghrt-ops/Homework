@@ -1,56 +1,61 @@
 package com.meticha.jetpackboilerplate.ui
 
-import androidx.compose.runtime.State
-import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.*
 import androidx.lifecycle.ViewModel
 import com.meticha.jetpackboilerplate.domain.VectorEngine
 import com.meticha.jetpackboilerplate.domain.VectorInput
 import com.meticha.jetpackboilerplate.domain.CartesianPoint
 
+// 1. DEFINE THE MEASUREMENT STANDARDS
+enum class MeasurementUnit(val suffix: String, val factor: Double) {
+    MILES("mi", 1.0),
+    METERS("m", 1609.34),
+    KILOMETERS("km", 1.60934),
+    FEET("ft", 5280.0)
+}
+
 class VectorViewModel : ViewModel() {
-    // Optimization: Making the engine a lazy singleton to save memory on init
     private val engine by lazy { VectorEngine() }
 
-    // 1. INPUT: Using a snapshot-backed list for high-performance UI sync
+    // --- NEW: UNIT STATE ---
+    var selectedUnit by mutableStateOf(MeasurementUnit.MILES)
+        private set
+
     val vectorList = mutableStateListOf<VectorInput>()
 
-    /** * 2. OUTPUT: Optimized Derived State
-     * We use 'derivedStateOf' with a 'structurallyEqual' policy 
-     * to prevent the UI from flickering if the data hasn't actually changed.
-     */
+    // --- CALCULATIONS ---
     val pathPoints: State<List<CartesianPoint>> = derivedStateOf {
         engine.calculatePath(vectorList)
     }
 
-    /** * 3. HUD: The Resultant (The Final Answer)
-     * OPTIMIZATION: We calculate this directly from the last point 
-     * to avoid looping through the engine again.
+    /** * HUD: The Resultant with Unit Conversion
+     * This automatically scales the distance based on the selected unit!
      */
-    val resultant: State<VectorInput> = derivedStateOf {
+    val displayResultant: State<String> = derivedStateOf {
         val lastPoint = pathPoints.value.lastOrNull() ?: CartesianPoint(0f, 0f)
-        engine.getResultant(lastPoint)
+        val res = engine.getResultant(lastPoint)
+        
+        val convertedDist = res.magnitude * selectedUnit.factor
+        val unitSuffix = selectedUnit.suffix
+        
+        // Formats to 2 decimal places for precision
+        "%.2f %s @ %.1f°".format(convertedDist, unitSuffix, res.bearing)
     }
 
-    // --- OPTIMIZED COMMANDS ---
+    // --- COMMANDS ---
 
-    /**
-     * Accuracy Check: Prevents "Ghost Vectors" (0 magnitude or NaN degrees)
-     * from entering the engine room.
-     */
+    fun setUnit(unit: MeasurementUnit) {
+        selectedUnit = unit
+    }
+
     fun addVector(magnitude: Double, bearing: Double) {
         if (magnitude > 0.0 && !magnitude.isNaN() && !bearing.isNaN()) {
             vectorList.add(VectorInput(magnitude, bearing))
         }
     }
 
-    /**
-     * Speed: Standard 'removeLast' is more efficient than manual index calculation
-     */
     fun undo() {
-        if (vectorList.isNotEmpty()) {
-            vectorList.removeLast()
-        }
+        if (vectorList.isNotEmpty()) vectorList.removeLast()
     }
 
     fun clearSystem() {
