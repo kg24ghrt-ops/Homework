@@ -4,6 +4,7 @@ import androidx.compose.animation.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -20,7 +21,7 @@ import com.meticha.jetpackboilerplate.ui.components.TacticalViewport
 import com.meticha.jetpackboilerplate.ui.theme.CommandCyan
 import com.meticha.jetpackboilerplate.ui.theme.RadarGreen
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalAnimationApi::class)
 @Composable
 fun CommanderDashboard(viewModel: VectorViewModel) {
     val path by viewModel.pathPoints
@@ -28,7 +29,7 @@ fun CommanderDashboard(viewModel: VectorViewModel) {
     val currentUnit = viewModel.selectedUnit
 
     Scaffold(
-        containerColor = Color(0xFF080B0F), // Slightly deeper black
+        containerColor = Color(0xFF080B0F), 
         topBar = {
             Column {
                 CenterAlignedTopAppBar(
@@ -42,7 +43,10 @@ fun CommanderDashboard(viewModel: VectorViewModel) {
                             )
                             AnimatedContent(
                                 targetState = displayResult,
-                                transitionSpec = { fadeIn() with fadeOut() }
+                                transitionSpec = {
+                                    (fadeIn() + scaleIn()).with(fadeOut() + scaleOut())
+                                },
+                                label = "ResultAnimation"
                             ) { result ->
                                 Text(
                                     text = result,
@@ -57,7 +61,6 @@ fun CommanderDashboard(viewModel: VectorViewModel) {
                     },
                     colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = Color.Transparent)
                 )
-                // Tactical scanline separator
                 LinearProgressIndicator(
                     progress = 1f,
                     modifier = Modifier.fillMaxWidth().height(1.dp),
@@ -67,13 +70,11 @@ fun CommanderDashboard(viewModel: VectorViewModel) {
             }
         },
         bottomBar = {
+            // FIXED: Removed the invalid BoxWithConstraints logic
             Surface(
                 tonalElevation = 12.dp,
                 color = Color(0xFF101419),
-                border = BoxWithConstraints { 
-                    // Add a top border for that "Panel" feel
-                    Modifier.background(CommandCyan.copy(alpha = 0.1f))
-                }.let { null } 
+                border = BorderStroke(1.dp, CommandCyan.copy(alpha = 0.1f))
             ) {
                 QuickEntryBar(viewModel = viewModel, onReset = { viewModel.clearSystem() })
             }
@@ -81,17 +82,14 @@ fun CommanderDashboard(viewModel: VectorViewModel) {
     ) { innerPadding ->
         Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
             
-            // 1. TACTICAL GRID BACKGROUND
             TacticalGrid()
 
-            // 2. MAIN VIEWPORT
             TacticalViewport(
                 path = path,
                 selectedUnit = currentUnit,
                 modifier = Modifier.fillMaxSize()
             )
 
-            // 3. RIGHT PANEL CONTROLS (Floating Glass)
             Column(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
@@ -99,17 +97,15 @@ fun CommanderDashboard(viewModel: VectorViewModel) {
                     .width(100.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // Precision Toggle
                 ModeToggle(
                     isTextbook = viewModel.isTextbookMode,
                     onToggle = { viewModel.toggleTextbookMode() }
                 )
 
-                // Unit Selector (Vertical Stack)
                 Surface(
                     color = Color(0xFF1A1F26).copy(alpha = 0.8f),
                     shape = MaterialTheme.shapes.medium,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, CommandCyan.copy(alpha = 0.2f))
+                    border = BorderStroke(1.dp, CommandCyan.copy(alpha = 0.2f))
                 ) {
                     Column(modifier = Modifier.padding(4.dp)) {
                         MeasurementUnit.entries.forEach { unit ->
@@ -121,7 +117,10 @@ fun CommanderDashboard(viewModel: VectorViewModel) {
                                     contentColor = if (isSelected) CommandCyan else Color.Gray
                                 )
                             ) {
-                                Text(unit.suffix.uppercase(), fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
+                                Text(
+                                    unit.suffix.uppercase(), 
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                )
                             }
                         }
                     }
@@ -131,13 +130,12 @@ fun CommanderDashboard(viewModel: VectorViewModel) {
     }
 }
 
+// ... Keep TacticalGrid and ModeToggle as they were ...
 @Composable
 fun TacticalGrid() {
     Canvas(modifier = Modifier.fillMaxSize()) {
         val gridSpacing = 40.dp.toPx()
         val pathEffect = PathEffect.dashPathEffect(floatArrayOf(5f, 5f), 0f)
-        
-        // Vertical lines
         for (x in 0..size.width.toInt() step gridSpacing.toInt()) {
             drawLine(
                 color = CommandCyan.copy(alpha = 0.05f),
@@ -146,7 +144,6 @@ fun TacticalGrid() {
                 pathEffect = pathEffect
             )
         }
-        // Horizontal lines
         for (y in 0..size.height.toInt() step gridSpacing.toInt()) {
             drawLine(
                 color = CommandCyan.copy(alpha = 0.05f),
@@ -164,7 +161,7 @@ fun ModeToggle(isTextbook: Boolean, onToggle: () -> Unit) {
         onClick = onToggle,
         color = if (isTextbook) Color(0xFFFF79C6).copy(alpha = 0.15f) else CommandCyan.copy(alpha = 0.15f),
         shape = MaterialTheme.shapes.medium,
-        border = androidx.compose.foundation.BorderStroke(
+        border = BorderStroke(
             1.dp, 
             if (isTextbook) Color(0xFFFF79C6).copy(alpha = 0.5f) else CommandCyan.copy(alpha = 0.5f)
         )
