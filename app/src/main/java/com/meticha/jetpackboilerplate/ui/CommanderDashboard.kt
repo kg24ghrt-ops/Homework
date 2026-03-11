@@ -29,7 +29,6 @@ fun CommanderDashboard(viewModel: VectorViewModel) {
     val displayResult by viewModel.displayResultant
     val currentUnit = viewModel.selectedUnit
     
-    // --- DIALOG STATE ---
     var showScaleDialog by remember { mutableStateOf(false) }
 
     if (showScaleDialog) {
@@ -101,7 +100,6 @@ fun CommanderDashboard(viewModel: VectorViewModel) {
                 modifier = Modifier.fillMaxSize()
             )
 
-            // --- RIGHT PANEL CONTROLS ---
             Column(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
@@ -114,7 +112,6 @@ fun CommanderDashboard(viewModel: VectorViewModel) {
                     onToggle = { viewModel.toggleTextbookMode() }
                 )
 
-                // MANUAL SCALE TRIGGER
                 ScaleIndicator(
                     currentPrecision = viewModel.rulerPrecision,
                     onClick = { showScaleDialog = true }
@@ -148,13 +145,67 @@ fun CommanderDashboard(viewModel: VectorViewModel) {
     }
 }
 
+// --- SUPPORTING UI COMPONENTS (FIXES UNRESOLVED REFERENCES) ---
+
+@Composable
+fun TacticalGrid() {
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        val gridSpacing = 40.dp.toPx()
+        val pathEffect = PathEffect.dashPathEffect(floatArrayOf(5f, 5f), 0f)
+        for (x in 0..size.width.toInt() step gridSpacing.toInt()) {
+            drawLine(
+                color = CommandCyan.copy(alpha = 0.05f),
+                start = Offset(x.toFloat(), 0f),
+                end = Offset(x.toFloat(), size.height),
+                pathEffect = pathEffect
+            )
+        }
+        for (y in 0..size.height.toInt() step gridSpacing.toInt()) {
+            drawLine(
+                color = CommandCyan.copy(alpha = 0.05f),
+                start = Offset(0f, y.toFloat()),
+                end = Offset(size.width, y.toFloat()),
+                pathEffect = pathEffect
+            )
+        }
+    }
+}
+
+@Composable
+fun ModeToggle(isTextbook: Boolean, onToggle: () -> Unit) {
+    Surface(
+        onClick = onToggle,
+        color = if (isTextbook) Color(0xFFFF79C6).copy(alpha = 0.15f) else CommandCyan.copy(alpha = 0.15f),
+        shape = MaterialTheme.shapes.medium,
+        border = BorderStroke(
+            1.dp, 
+            if (isTextbook) Color(0xFFFF79C6).copy(alpha = 0.5f) else CommandCyan.copy(alpha = 0.5f)
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(8.dp).fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = if (isTextbook) "TEXTBOOK" else "PRECISE",
+                style = MaterialTheme.typography.labelSmall,
+                color = if (isTextbook) Color(0xFFFF79C6) else CommandCyan
+            )
+            Text(
+                text = if (isTextbook) "SNAP ON" else "RAW DATA",
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp),
+                color = Color.White.copy(alpha = 0.6f)
+            )
+        }
+    }
+}
+
 @Composable
 fun ScaleConfigDialog(
     currentPrecision: Double,
     onDismiss: () -> Unit,
     onConfirm: (Double) -> Unit
 ) {
-    // Convert ruler precision back to display scale (m per cm)
     var textValue by remember { mutableStateOf((currentPrecision * 10).toInt().toString()) }
 
     AlertDialog(
@@ -207,5 +258,3 @@ fun ScaleIndicator(currentPrecision: Double, onClick: () -> Unit) {
         }
     }
 }
-
-// ... TacticalGrid and ModeToggle remain unchanged ...
