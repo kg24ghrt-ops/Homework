@@ -19,6 +19,8 @@ import com.meticha.jetpackboilerplate.ui.MeasurementUnit
 import com.meticha.jetpackboilerplate.ui.theme.*
 import kotlin.math.abs
 import kotlin.math.max
+import androidx.compose.ui.text.font.FontWeight
+
 
 @OptIn(ExperimentalTextApi::class)
 @Composable

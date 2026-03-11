@@ -25,6 +25,9 @@ import com.meticha.jetpackboilerplate.ui.BearingMode
 import com.meticha.jetpackboilerplate.ui.VectorViewModel
 import com.meticha.jetpackboilerplate.ui.theme.CommandCyan
 import com.meticha.jetpackboilerplate.ui.theme.RadarGreen
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.shape.CornerSize
+
 
 @Composable
 fun QuickEntryBar(
