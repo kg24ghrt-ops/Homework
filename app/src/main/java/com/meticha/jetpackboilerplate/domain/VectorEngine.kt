@@ -8,34 +8,44 @@ data class CartesianPoint(val x: Float, val y: Float)
 class VectorEngine {
 
     private companion object {
+        // High-precision constants
         const val DEG_TO_RAD = PI / 180.0
         const val RAD_TO_DEG = 180.0 / PI
+        const val EPSILON = 1e-10 // Used to clean up "tiny" math errors
     }
 
     /**
-     * V4 IMPROVEMENT: Clean Coordinate Mapping
-     * Standardizes input so North (0°) is always "Up" on the screen.
+     * V4.1 ELITE: High-Precision Path Calculation
+     * Optimized to ensure 90°, 180°, 270° are perfectly flat/vertical.
      */
     fun calculatePath(inputs: List<VectorInput>): List<CartesianPoint> {
         val path = ArrayList<CartesianPoint>(inputs.size + 1)
         var currentX = 0.0
         var currentY = 0.0
         
-        // Always start at origin
         path.add(CartesianPoint(0f, 0f))
 
         for (input in inputs) {
-            // NORMALIZATION: Handle bearings > 360 or < 0
-            val normalizedBearing = (input.bearing % 360 + 360) % 360
+            // 1. NORMALIZE
+            val brng = (input.bearing % 360 + 360) % 360
             
-            // MATH LOGIC:
-            // 0° (North) -> cos(90)=0, sin(90)=1 -> (0, -mag)
-            // 90° (East) -> cos(0)=1, sin(0)=0 -> (mag, 0)
-            val rad = (90.0 - normalizedBearing) * DEG_TO_RAD
+            // 2. CONVERT BEARING TO STANDARD UNIT CIRCLE
+            // Bearing 0 (N) -> 90° on unit circle
+            // Bearing 90 (E) -> 0° on unit circle
+            val standardAngleRad = (90.0 - brng) * DEG_TO_RAD
             
-            currentX += input.magnitude * cos(rad)
-            currentY -= input.magnitude * sin(rad) // Canvas Y-Down correction
+            // 3. CALCULATION WITH PRECISION CLEANUP
+            var dx = input.magnitude * cos(standardAngleRad)
+            var dy = input.magnitude * sin(standardAngleRad)
+
+            // Fix for "almost zero" values (e.g. 1.2e-15) which confuse the UI
+            if (abs(dx) < EPSILON) dx = 0.0
+            if (abs(dy) < EPSILON) dy = 0.0
             
+            currentX += dx
+            currentY += dy // Using standard math Y (Up is Positive)
+            
+            // We store raw math coordinates; the UI (Viewport) handles the inversion
             path.add(CartesianPoint(currentX.toFloat(), currentY.toFloat()))
         }
         return path
@@ -43,24 +53,18 @@ class VectorEngine {
 
     /**
      * PRECISION RESULTANT: 
-     * Uses atan2 for 4-quadrant accuracy to ensure the orange line points 
-     * exactly where the path ends.
+     * Calculates the vector from (0,0) to the last point.
      */
     fun getResultant(finalPoint: CartesianPoint): VectorInput {
         val x = finalPoint.x.toDouble()
-        val y = -finalPoint.y.toDouble() // Invert Canvas Y back to Math Y
+        val y = finalPoint.y.toDouble()
         
         val magnitude = hypot(x, y)
         
-        // atan2 returns radians from -PI to PI
-        val angleDeg = atan2(y, x) * RAD_TO_DEG
+        // atan2 handles all 4 quadrants perfectly
+        val angleRad = atan2(y, x)
+        var bearing = 90.0 - (angleRad * RAD_TO_DEG)
         
-        // Convert Math angle (East-based) back to Bearing (North-based)
-        var bearing = 90.0 - angleDeg
-        
-        // FINAL NORMALIZATION: Ensure 0-359.99 range
-        bearing = (bearing % 360 + 360) % 360
-        
-        return VectorInput(magnitude, bearing)
+        return VectorInput(magnitude, (bearing % 360 + 360) % 360)
     }
 }

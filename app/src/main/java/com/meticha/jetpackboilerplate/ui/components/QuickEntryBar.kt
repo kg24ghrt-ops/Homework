@@ -1,14 +1,21 @@
 package com.meticha.jetpackboilerplate.ui.components
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -21,112 +28,137 @@ import com.meticha.jetpackboilerplate.ui.theme.RadarGreen
 
 @Composable
 fun QuickEntryBar(
-    viewModel: VectorViewModel, // Pass the ViewModel to control BearingMode
+    viewModel: VectorViewModel,
     onReset: () -> Unit
 ) {
     var magnitude by remember { mutableStateOf("") }
     var bearing by remember { mutableStateOf("") }
+    var showCompass by remember { mutableStateOf(false) } // Day 2 Mission: Compass Dialog
+
+    // --- INTEGRITY COLORS ---
+    val textbookPink = Color(0xFFFF79C6)
+    val activeAccent = if (viewModel.isTextbookMode) textbookPink else CommandCyan
 
     Surface(
-        color = Color(0xFF12171D), // Deep tactical background
-        tonalElevation = 12.dp,
-        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(0.1f))
+        color = Color(0xFF0D1117), // Deeper tactical black
+        tonalElevation = 16.dp,
+        border = BorderStroke(1.dp, activeAccent.copy(alpha = 0.2f)),
+        shape = MaterialTheme.shapes.large.copy(bottomStart = CornerSize(0.dp), bottomEnd = CornerSize(0.dp))
     ) {
         Column(
             modifier = Modifier
-                .padding(12.dp)
+                .padding(16.dp)
                 .navigationBarsPadding()
                 .fillMaxWidth()
         ) {
-            // 1. THE SHORTCUT ROW: Fast Quadrant Entry
+            // 1. HEADER & MODE INDICATOR
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = if (viewModel.isTextbookMode) "TEXTBOOK ENTRY // ACTIVE" else "MANUAL ENTRY // PRECISE",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = activeAccent.copy(alpha = 0.8f),
+                    letterSpacing = 1.sp
+                )
+                Icon(
+                    imageVector = Icons.Default.History,
+                    contentDescription = "Undo",
+                    modifier = Modifier.size(18.dp).clickable { viewModel.undoLast() },
+                    tint = Color.Gray
+                )
+            }
+
+            // 2. QUADRANT SNAP ROW (Optimized for Thumb)
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 BearingMode.entries.forEach { mode ->
                     val isSelected = viewModel.currentBearingMode == mode
-                    InputChip(
-                        selected = isSelected,
-                        onClick = { viewModel.setBearingMode(mode) },
-                        label = { 
-                            Text(
-                                mode.name, 
-                                fontSize = 10.sp, 
-                                fontWeight = FontWeight.Bold
-                            ) 
-                        },
-                        colors = InputChipDefaults.inputChipColors(
-                            selectedContainerColor = RadarGreen,
-                            selectedLabelColor = Color.Black,
-                            containerColor = Color(0xFF1A1F26),
-                            labelColor = CommandCyan
-                        ),
-                        modifier = Modifier.weight(1f)
-                    )
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(36.dp)
+                            .clip(MaterialTheme.shapes.small)
+                            .background(if (isSelected) activeAccent else Color(0xFF1A1F26))
+                            .border(1.dp, if (isSelected) Color.White.copy(0.3f) else Color.Transparent)
+                            .clickable { viewModel.setBearingMode(mode) },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = mode.name,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = if (isSelected) Color.Black else Color.White.copy(0.7f)
+                        )
+                    }
                 }
             }
 
-            // 2. INPUT ROW: Distance, Bearing, and Action
+            // 3. MAIN INPUT ROW
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                // Magnitude Input
+                // Magnitude
                 OutlinedTextField(
                     value = magnitude,
-                    onValueChange = { if (it.length <= 6) magnitude = it },
-                    label = { Text("DISTANCE", style = MaterialTheme.typography.labelSmall) },
+                    onValueChange = { if (it.all { char -> char.isDigit() || char == '.' }) magnitude = it },
+                    label = { Text("MAGNITUDE", fontSize = 9.sp) },
                     modifier = Modifier.weight(1.2f),
                     singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = CommandCyan,
-                        unfocusedBorderColor = Color.Gray.copy(0.4f)
+                        focusedBorderColor = activeAccent,
+                        unfocusedBorderColor = Color.White.copy(0.1f),
+                        focusedLabelColor = activeAccent
                     )
                 )
 
-                // Bearing Input
+                // Angle with Compass Trigger
                 OutlinedTextField(
                     value = bearing,
-                    onValueChange = { if (it.length <= 3) bearing = it },
-                    label = { Text("ANGLE°", style = MaterialTheme.typography.labelSmall) },
+                    onValueChange = { if (it.all { char -> char.isDigit() }) bearing = it },
+                    label = { Text("BEARING°", fontSize = 9.sp) },
                     modifier = Modifier.weight(1f),
                     singleLine = true,
-                    placeholder = { Text("0-360", fontSize = 10.sp) },
+                    trailingIcon = {
+                        IconButton(onClick = { /* TODO: Trigger Compass Dialog */ }) {
+                            Icon(Icons.Default.Explore, contentDescription = null, tint = activeAccent, modifier = Modifier.size(20.dp))
+                        }
+                    },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = if (viewModel.currentBearingMode == BearingMode.DIRECT) CommandCyan else RadarGreen,
-                        unfocusedBorderColor = Color.Gray.copy(0.4f)
+                        focusedBorderColor = activeAccent,
+                        unfocusedBorderColor = Color.White.copy(0.1f),
+                        focusedLabelColor = activeAccent
                     )
                 )
 
-                // Deploy Button
-                Button(
-                    onClick = {
-                        val mag = magnitude.toDoubleOrNull()
-                        val brng = bearing.toDoubleOrNull()
-                        if (mag != null && brng != null) {
-                            viewModel.addVector(mag, brng)
-                            magnitude = ""
-                            bearing = ""
-                        }
-                    },
-                    modifier = Modifier.height(56.dp),
-                    shape = MaterialTheme.shapes.medium,
-                    colors = ButtonDefaults.buttonColors(containerColor = CommandCyan),
-                    contentPadding = PaddingValues(0.dp)
+                // DEPLOY BUTTON (The "Action" Glow)
+                Box(
+                    modifier = Modifier
+                        .size(56.dp)
+                        .clip(MaterialTheme.shapes.medium)
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(activeAccent, activeAccent.copy(alpha = 0.7f))
+                            )
+                        )
+                        .clickable {
+                            val mag = magnitude.toDoubleOrNull()
+                            val brng = bearing.toDoubleOrNull()
+                            if (mag != null && brng != null) {
+                                viewModel.addVector(mag, brng)
+                                magnitude = ""; bearing = ""
+                            }
+                        },
+                    contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Default.Add, contentDescription = "Add", tint = Color.Black)
-                }
-
-                // Reset Button
-                IconButton(
-                    onClick = onReset,
-                    modifier = Modifier.size(48.dp)
-                ) {
-                    Icon(Icons.Default.Refresh, contentDescription = "Reset", tint = Color.Gray)
+                    Icon(Icons.Default.Add, contentDescription = null, tint = Color.Black, modifier = Modifier.size(28.dp))
                 }
             }
         }
