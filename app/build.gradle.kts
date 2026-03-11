@@ -27,8 +27,8 @@ android {
         applicationId = "com.meticha.jetpackboilerplate"
         minSdk = 31
         targetSdk = 36
-        versionCode = 7
-        versionName = "4.5"
+        versionCode = 8
+        versionName = "5"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

@@ -2,20 +2,21 @@ package com.meticha.jetpackboilerplate.ui
 
 import androidx.compose.animation.*
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.meticha.jetpackboilerplate.domain.MeasurementUnit
 import com.meticha.jetpackboilerplate.ui.components.QuickEntryBar
 import com.meticha.jetpackboilerplate.ui.components.TacticalViewport
 import com.meticha.jetpackboilerplate.ui.theme.CommandCyan
@@ -27,6 +28,17 @@ fun CommanderDashboard(viewModel: VectorViewModel) {
     val path by viewModel.pathPoints
     val displayResult by viewModel.displayResultant
     val currentUnit = viewModel.selectedUnit
+    
+    // --- DIALOG STATE ---
+    var showScaleDialog by remember { mutableStateOf(false) }
+
+    if (showScaleDialog) {
+        ScaleConfigDialog(
+            currentPrecision = viewModel.rulerPrecision,
+            onDismiss = { showScaleDialog = false },
+            onConfirm = { mPerCm -> viewModel.updateScale(mPerCm) }
+        )
+    }
 
     Scaffold(
         containerColor = Color(0xFF080B0F), 
@@ -70,7 +82,6 @@ fun CommanderDashboard(viewModel: VectorViewModel) {
             }
         },
         bottomBar = {
-            // FIXED: Removed the invalid BoxWithConstraints logic
             Surface(
                 tonalElevation = 12.dp,
                 color = Color(0xFF101419),
@@ -90,6 +101,7 @@ fun CommanderDashboard(viewModel: VectorViewModel) {
                 modifier = Modifier.fillMaxSize()
             )
 
+            // --- RIGHT PANEL CONTROLS ---
             Column(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
@@ -100,6 +112,12 @@ fun CommanderDashboard(viewModel: VectorViewModel) {
                 ModeToggle(
                     isTextbook = viewModel.isTextbookMode,
                     onToggle = { viewModel.toggleTextbookMode() }
+                )
+
+                // MANUAL SCALE TRIGGER
+                ScaleIndicator(
+                    currentPrecision = viewModel.rulerPrecision,
+                    onClick = { showScaleDialog = true }
                 )
 
                 Surface(
@@ -130,56 +148,64 @@ fun CommanderDashboard(viewModel: VectorViewModel) {
     }
 }
 
-// ... Keep TacticalGrid and ModeToggle as they were ...
 @Composable
-fun TacticalGrid() {
-    Canvas(modifier = Modifier.fillMaxSize()) {
-        val gridSpacing = 40.dp.toPx()
-        val pathEffect = PathEffect.dashPathEffect(floatArrayOf(5f, 5f), 0f)
-        for (x in 0..size.width.toInt() step gridSpacing.toInt()) {
-            drawLine(
-                color = CommandCyan.copy(alpha = 0.05f),
-                start = Offset(x.toFloat(), 0f),
-                end = Offset(x.toFloat(), size.height),
-                pathEffect = pathEffect
-            )
+fun ScaleConfigDialog(
+    currentPrecision: Double,
+    onDismiss: () -> Unit,
+    onConfirm: (Double) -> Unit
+) {
+    // Convert ruler precision back to display scale (m per cm)
+    var textValue by remember { mutableStateOf((currentPrecision * 10).toInt().toString()) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Set Manual Scale") },
+        text = {
+            Column {
+                Text("Map Scale (1cm = X meters):", style = MaterialTheme.typography.bodySmall)
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = textValue,
+                    onValueChange = { textValue = it },
+                    label = { Text("Meters (m)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                textValue.toDoubleOrNull()?.let { onConfirm(it) }
+                onDismiss()
+            }) { Text("APPLY") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("CANCEL") }
         }
-        for (y in 0..size.height.toInt() step gridSpacing.toInt()) {
-            drawLine(
-                color = CommandCyan.copy(alpha = 0.05f),
-                start = Offset(0f, y.toFloat()),
-                end = Offset(size.width, y.toFloat()),
-                pathEffect = pathEffect
-            )
-        }
-    }
+    )
 }
 
 @Composable
-fun ModeToggle(isTextbook: Boolean, onToggle: () -> Unit) {
+fun ScaleIndicator(currentPrecision: Double, onClick: () -> Unit) {
     Surface(
-        onClick = onToggle,
-        color = if (isTextbook) Color(0xFFFF79C6).copy(alpha = 0.15f) else CommandCyan.copy(alpha = 0.15f),
+        onClick = onClick,
+        color = Color(0xFF1A1F26).copy(alpha = 0.8f),
         shape = MaterialTheme.shapes.medium,
-        border = BorderStroke(
-            1.dp, 
-            if (isTextbook) Color(0xFFFF79C6).copy(alpha = 0.5f) else CommandCyan.copy(alpha = 0.5f)
-        )
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))
     ) {
         Column(
             modifier = Modifier.padding(8.dp).fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            Text("SCALE", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
             Text(
-                text = if (isTextbook) "TEXTBOOK" else "PRECISE",
-                style = MaterialTheme.typography.labelSmall,
-                color = if (isTextbook) Color(0xFFFF79C6) else CommandCyan
-            )
-            Text(
-                text = if (isTextbook) "800m SNAP" else "RAW DATA",
-                style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp),
-                color = Color.White.copy(alpha = 0.6f)
+                text = "1cm:${(currentPrecision * 10).toInt()}m", 
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp),
+                color = CommandCyan,
+                fontWeight = FontWeight.Bold
             )
         }
     }
 }
+
+// ... TacticalGrid and ModeToggle remain unchanged ...
